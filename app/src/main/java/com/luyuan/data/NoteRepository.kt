@@ -18,9 +18,14 @@ object NoteRepository {
 
     fun listNotes(context: Context): List<Note> {
         val dir = StorageLocator.notesDir(context)
-        return (dir.listFiles { f -> FileNaming.isNoteFile(f.name) }
-            ?.mapNotNull { readNote(it) }
-            ?: emptyList())
+        val root = StorageLocator.getRoot(context)
+        val fromNotes = dir.listFiles { f -> FileNaming.isNoteFile(f.name) }
+            ?.mapNotNull { readNote(it) } ?: emptyList()
+        // 兜底：若 Syncthing 把笔记直接同步到根目录（无 notes 子层），也能读到
+        val fromRoot = root.listFiles { f -> FileNaming.isNoteFile(f.name) }
+            ?.mapNotNull { readNote(it) } ?: emptyList()
+        return (fromNotes + fromRoot)
+            .distinctBy { it.id }
             .filter { !it.deleted }
             .sortedByDescending { it.created_at }
     }
