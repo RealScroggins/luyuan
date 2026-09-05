@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import org.vosk.Model
 import org.vosk.Recognizer
-import org.vosk.Vosk
 import java.io.File
 import java.net.URL
 import java.util.zip.ZipInputStream
@@ -37,7 +36,6 @@ object SttEngine {
             }
         }
         return try {
-            Vosk.setLogLevel(0)
             model = Model(findModelDir(base).absolutePath)
             true
         } catch (e: Exception) {
@@ -46,7 +44,7 @@ object SttEngine {
         }
     }
 
-    fun createRecognizer(sampleRate: Double = 16000.0): Recognizer? {
+    fun createRecognizer(sampleRate: Float = 16000.0f): Recognizer? {
         val m = model ?: return null
         return try { Recognizer(m, sampleRate) } catch (e: Exception) { null }
     }

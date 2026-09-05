@@ -87,7 +87,7 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
             recognizer?.let { rec ->
                 try {
                     rec.acceptWaveForm(chunk, chunk.size)
-                    val partial = rec.partialResult()
+                    val partial = rec.partialResult
                     val t = extractText(partial, "partial")
                     if (t.isNotBlank()) _liveText.value = t
                 } catch (_: Exception) {
@@ -107,7 +107,7 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         recorder?.stop()
         recorder = null
         val finalText = try {
-            recognizer?.finalResult()?.let { extractText(it, "text") } ?: _liveText.value
+            recognizer?.finalResult?.let { extractText(it, "text") } ?: _liveText.value
         } catch (_: Exception) {
             _liveText.value
         }
