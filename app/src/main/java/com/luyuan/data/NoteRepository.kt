@@ -17,28 +17,34 @@ import java.util.UUID
 object NoteRepository {
 
     fun listNotes(context: Context): List<Note> {
-        val dir = StorageLocator.notesDir(context)
         val root = StorageLocator.getRoot(context)
-        val fromNotes = dir.listFiles { f -> FileNaming.isNoteFile(f.name) }
-            ?.mapNotNull { readNote(it) } ?: emptyList()
-        // 兜底：若 Syncthing 把笔记直接同步到根目录（无 notes 子层），也能读到
-        val fromRoot = root.listFiles { f -> FileNaming.isNoteFile(f.name) }
-            ?.mapNotNull { readNote(it) } ?: emptyList()
-        return (fromNotes + fromRoot)
+        val found = mutableListOf<Note>()
+        collectNotes(root, found, 0, 6)
+        return found
             .distinctBy { it.id }
             .filter { !it.deleted }
             .sortedByDescending { it.created_at }
     }
 
+    /** 递归扫描共享根目录：无论 Syncthing 把笔记映射到哪一层（notes/、data/notes/、根目录直放）都能读到 */
+    private fun collectNotes(dir: File?, out: MutableList<Note>, depth: Int, maxDepth: Int) {
+        if (dir == null || !dir.isDirectory || depth > maxDepth) return
+        val files = dir.listFiles() ?: return
+        for (f in files) {
+            if (f.isDirectory) {
+                collectNotes(f, out, depth + 1, maxDepth)
+            } else if (FileNaming.isNoteFile(f.name)) {
+                readNote(f)?.let { out.add(it) }
+            }
+        }
+    }
+
     fun getNote(context: Context, id: String): Note? {
-        val dir = StorageLocator.notesDir(context)
-        return dir.listFiles { f -> f.name.endsWith(".json", ignoreCase = true) }
-            ?.mapNotNull { readNote(it) }
-            ?.firstOrNull { it.id == id }
+        return listNotes(context).firstOrNull { it.id == id }
     }
 
     fun saveNote(context: Context, note: Note) {
-        val dir = StorageLocator.notesDir(context)
+        val dir = StorageLocator.getRoot(context).also { it.mkdirs() }
         val file = File(dir, FileNaming.fileNameFor(note.id))
         file.writeText(note.toJson(), Charsets.UTF_8)
     }

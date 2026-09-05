@@ -17,7 +17,7 @@ object StorageLocator {
     fun getRoot(context: Context): File {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val name = prefs.getString(KEY_ROOT, null) ?: DEFAULT
-        return File(Environment.getExternalStorageDirectory(), name)
+        return File(Environment.getExternalStorageDirectory(), name).also { it.mkdirs() }
     }
 
     fun setRootName(context: Context, name: String) {
