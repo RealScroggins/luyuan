@@ -25,6 +25,9 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     private val _notes = MutableStateFlow<List<Note>>(emptyList())
     val notes: StateFlow<List<Note>> = _notes
 
+    private val _refreshing = MutableStateFlow(false)
+    val refreshing: StateFlow<Boolean> = _refreshing
+
     private val _liveText = MutableStateFlow("")
     val liveText: StateFlow<String> = _liveText
 
@@ -63,8 +66,11 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun refresh() {
+        // 先同步置位再起协程：下拉刷新的指示器靠它联动，避免竞态提前收起
+        _refreshing.value = true
         viewModelScope.launch(Dispatchers.IO) {
             _notes.value = NoteRepository.listNotes(ctx)
+            _refreshing.value = false
         }
     }
 

@@ -12,7 +12,10 @@ import kotlinx.serialization.json.Json
 data class Note(
     val id: String,
     val created_at: String,
-    val updated_at: String,
+    // 电脑端 store.add_note 建的笔记没有 updated_at（SYNC_FORMAT 允许缺省），
+    // 必须给默认值，否则 kotlinx.serialization 解析直接抛异常 → 整条笔记被丢弃。
+    // 兜底逻辑（缺省视为 created_at）在 NoteRepository.readNote。
+    val updated_at: String = "",
     val text: String,
     val source: String,            // "manual" | "voice"
     val tags: List<String> = emptyList(),

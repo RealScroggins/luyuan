@@ -12,11 +12,26 @@ android {
         applicationId = "com.luyuan"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            // 固定签名：keystore 提交进仓库，保证每次 CI 编出的 APK 签名一致，
+            // 手机端才能覆盖安装（此前每次编译临时密钥 → 签名不同 → 无法覆盖装）
+            storeFile = rootProject.file("keystore/luyuan-debug.p12")
+            storePassword = "luyuan2026"
+            keyAlias = "luyuan-debug"
+            keyPassword = "luyuan2026"
+            storeType = "PKCS12"
+        }
     }
 
     buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
             isShrinkResources = false

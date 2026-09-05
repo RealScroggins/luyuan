@@ -21,6 +21,8 @@ object NoteRepository {
         val found = mutableListOf<Note>()
         collectNotes(root, found, 0, 6)
         return found
+            // 同 id 多文件时（历史残留/冲突副本）取 updated_at 最新的那份
+            .sortedByDescending { it.updated_at.ifBlank { it.created_at } }
             .distinctBy { it.id }
             .filter { !it.deleted }
             .sortedByDescending { it.created_at }
@@ -44,9 +46,28 @@ object NoteRepository {
     }
 
     fun saveNote(context: Context, note: Note) {
-        val dir = StorageLocator.getRoot(context).also { it.mkdirs() }
-        val file = File(dir, FileNaming.fileNameFor(note.id))
+        val root = StorageLocator.getRoot(context).also { it.mkdirs() }
+        // 已存在则原地覆盖，绝不另起新文件名——否则同一 id 留下多份文件，
+        // 经 Syncthing 同步到电脑端也变成重复文件
+        val file = findFileById(root, note.id, 0, 6)
+            ?: File(root, FileNaming.fileNameFor(note.id, parseCreatedAt(note.created_at)))
         file.writeText(note.toJson(), Charsets.UTF_8)
+    }
+
+    /** 按 id 前 8 位找已有文件（文件名约定 ..._<id前8位>.json），递归兼容旧层级 */
+    private fun findFileById(dir: File, noteId: String, depth: Int, maxDepth: Int): File? {
+        if (!dir.isDirectory || depth > maxDepth) return null
+        val suffix = "_" + noteId.take(8).lowercase() + ".json"
+        for (f in dir.listFiles() ?: return null) {
+            if (f.isDirectory) {
+                findFileById(f, noteId, depth + 1, maxDepth)?.let { return it }
+            } else if (!f.name.contains(".sync-conflict") &&
+                f.name.lowercase().endsWith(suffix)
+            ) {
+                return f
+            }
+        }
+        return null
     }
 
     fun updateNote(
@@ -93,7 +114,7 @@ object NoteRepository {
     private fun readNote(file: File): Note? = try {
         val raw = file.readText(Charsets.UTF_8)
         val n = Note.fromJson(raw)
-        // 兼容兜底：缺字段补默认
+        // 兼容兜底：缺字段补默认（updated_at 现已可缺省，这里统一补齐）
         n.copy(
             updated_at = if (n.updated_at.isBlank()) n.created_at else n.updated_at,
             device = if (n.device.isBlank()) SyncPolicy.DEVICE_PC else n.device,
@@ -101,6 +122,17 @@ object NoteRepository {
         )
     } catch (e: Exception) {
         null
+    }
+
+    /** created_at(ISO8601, 可带时区) → 本地时间，用于生成规范文件名；解析失败退回当前时间 */
+    private fun parseCreatedAt(s: String): LocalDateTime = try {
+        OffsetDateTime.parse(s).toLocalDateTime()
+    } catch (_: Exception) {
+        try {
+            LocalDateTime.parse(s)
+        } catch (_: Exception) {
+            LocalDateTime.now()
+        }
     }
 
     fun nowIso(): String {

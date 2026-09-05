@@ -2,6 +2,7 @@ package com.luyuan.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,13 +31,18 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pullrefresh.PullRefreshIndicator
+import androidx.compose.material3.pullrefresh.pullRefresh
+import androidx.compose.material3.pullrefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -88,67 +94,90 @@ fun NoteListScreen(
     ) { padding ->
         val sttReady by vm.sttReady.collectAsStateWithLifecycle()
         val sttMessage by vm.sttMessage.collectAsStateWithLifecycle()
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (!allFilesGranted) {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
+        val refreshing by vm.refreshing.collectAsStateWithLifecycle()
+
+        // 下拉刷新：列表到顶继续下拉 → 触发 vm.refresh() → 读盘完成自动收起
+        val pullState = rememberPullToRefreshState()
+        LaunchedEffect(pullState.isRefreshing) {
+            if (pullState.isRefreshing) vm.refresh()
+        }
+        LaunchedEffect(refreshing) {
+            if (!refreshing && pullState.isRefreshing) pullState.endRefresh()
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .nestedScroll(pullState.nestedScrollConnection)
+                .pullRefresh(pullState)
+        ) {
+            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                if (!allFilesGranted) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                "需要「所有文件访问」权限才能读取 Syncthing 同步目录，否则看不到电脑同步来的笔记。",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Button(onClick = {
+                                context.startActivity(PermissionHelper.allFilesSettingsIntent())
+                            }) { Text("去开启") }
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = { Text("搜索…") },
+                    modifier = Modifier.fillMaxWidth().padding(12.dp)
+                )
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    placeholder = { Text("记一笔，回车保存") },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        if (draft.isNotBlank()) {
+                            vm.addManual(draft)
+                            draft = ""
+                        }
+                    })
+                )
+                Text(
+                    text = when {
+                        sttReady -> "🎤 语音转写已就绪"
+                        sttMessage.isNotBlank() -> "🎤 $sttMessage"
+                        else -> "🎤 语音模型加载中…"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                )
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize()
+                        .padding(horizontal = 12.dp)
+                        .padding(bottom = 88.dp)
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            "需要「所有文件访问」权限才能读取 Syncthing 同步目录，否则看不到电脑同步来的笔记。",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Button(onClick = {
-                            context.startActivity(PermissionHelper.allFilesSettingsIntent())
-                        }) { Text("去开启") }
+                    items(filtered, key = { it.id }) { note ->
+                        NoteCard(note = note, onClick = { onDetail(note.id) })
                     }
                 }
             }
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = { Text("搜索…") },
-                modifier = Modifier.fillMaxWidth().padding(12.dp)
+            PullRefreshIndicator(
+                isRefreshing = pullState.isRefreshing,
+                state = pullState,
+                modifier = Modifier.align(Alignment.TopCenter)
             )
-            OutlinedTextField(
-                value = draft,
-                onValueChange = { draft = it },
-                placeholder = { Text("记一笔，回车保存") },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = {
-                    if (draft.isNotBlank()) {
-                        vm.addManual(draft)
-                        draft = ""
-                    }
-                })
-            )
-            Text(
-                text = when {
-                    sttReady -> "🎤 语音转写已就绪"
-                    sttMessage.isNotBlank() -> "🎤 $sttMessage"
-                    else -> "🎤 语音模型加载中…"
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-            )
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize()
-                    .padding(horizontal = 12.dp)
-                    .padding(bottom = 88.dp)
-            ) {
-                items(filtered, key = { it.id }) { note ->
-                    NoteCard(note = note, onClick = { onDetail(note.id) })
-                }
-            }
         }
     }
 }
