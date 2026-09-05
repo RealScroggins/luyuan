@@ -16,7 +16,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: '17'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -26,10 +26,20 @@ jobs:
           yes | sdkmanager --licenses
           sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: "8.9"
+      # 2026-09-05: GitHub Actions 自带 cache service 出现 "Our services aren't available right now" 故障，
+      # 导致 gradle/actions/setup-gradle@v3 拿不到 Gradle distribution，跑不动 assembleDebug。
+      # 改用直接 wget 下载 standalone distribution，绕开 cache service。
+      - name: Install Gradle (standalone, bypass GitHub cache service outage)
+        run: |
+          set -e
+          echo "Downloading Gradle 8.9 distribution ..."
+          wget -q --show-progress https://services.gradle.org/distributions/gradle-8.9-bin.zip -O /tmp/gradle.zip
+          echo "Unpacking ..."
+          unzip -q /tmp/gradle.zip -d /tmp/
+          sudo mv /tmp/gradle-8.9 /opt/gradle-8.9
+          echo "/opt/gradle-8.9/bin" >> "$GITHUB_PATH"
+          rm /tmp/gradle.zip
+          gradle --version
 
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon
