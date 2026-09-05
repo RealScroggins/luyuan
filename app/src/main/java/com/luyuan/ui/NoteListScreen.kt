@@ -8,15 +8,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -36,7 +35,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -52,8 +51,7 @@ fun NoteListScreen(
 ) {
     val notes by vm.notes.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
-    var showAdd by remember { mutableStateOf(false) }
-    var newText by remember { mutableStateOf(TextFieldValue("")) }
+    var draft by remember { mutableStateOf("") }
 
     val filtered = remember(notes, query) {
         if (query.isBlank()) notes else notes.filter {
@@ -74,22 +72,43 @@ fun NoteListScreen(
             )
         },
         floatingActionButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                FloatingActionButton(onClick = onRecord) {
-                    Icon(Icons.Default.Mic, contentDescription = "录音")
-                }
-                FloatingActionButton(onClick = { showAdd = true }) {
-                    Icon(Icons.Default.Add, contentDescription = "新建")
-                }
+            FloatingActionButton(onClick = onRecord) {
+                Icon(Icons.Default.Mic, contentDescription = "录音")
             }
         }
     ) { padding ->
+        val sttReady by vm.sttReady.collectAsStateWithLifecycle()
+        val sttMessage by vm.sttMessage.collectAsStateWithLifecycle()
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
                 placeholder = { Text("搜索…") },
                 modifier = Modifier.fillMaxWidth().padding(12.dp)
+            )
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                placeholder = { Text("记一笔，回车保存") },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    if (draft.isNotBlank()) {
+                        vm.addManual(draft)
+                        draft = ""
+                    }
+                })
+            )
+            Text(
+                text = when {
+                    sttReady -> "🎤 语音转写已就绪"
+                    sttMessage.isNotBlank() -> "🎤 $sttMessage"
+                    else -> "🎤 语音模型加载中…"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
             )
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -102,32 +121,6 @@ fun NoteListScreen(
                 }
             }
         }
-    }
-
-    if (showAdd) {
-        AlertDialog(
-            onDismissRequest = { showAdd = false },
-            title = { Text("记一笔") },
-            text = {
-                OutlinedTextField(
-                    value = newText,
-                    onValueChange = { newText = it },
-                    placeholder = { Text("输入内容…") },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
-                    singleLine = false
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    vm.addManual(newText.text)
-                    newText = TextFieldValue("")
-                    showAdd = false
-                }) { Text("保存") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAdd = false }) { Text("取消") }
-            }
-        )
     }
 }
 

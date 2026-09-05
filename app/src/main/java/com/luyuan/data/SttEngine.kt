@@ -16,18 +16,16 @@ import java.util.zip.ZipInputStream
 object SttEngine {
     private const val TAG = "SttEngine"
     private const val MODEL_URL =
-        "https://alphacephei.com/vosk/models/vosk-model-small-zh-cn-0.22.zip"
+        "https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip"
     private const val MODEL_DIR_NAME = "vosk-model-zh"
 
     private var model: Model? = null
-    private var initialized = false
 
-    /** 确保模型就绪；返回是否可用 */
+    /** 确保模型就绪；返回是否可用。失败不缓存，下次调用会重试下载。 */
     fun ensureModel(context: Context): Boolean {
-        if (initialized) return model != null
-        initialized = true
+        if (model != null) return true
         val base = File(context.getExternalFilesDir(null), MODEL_DIR_NAME)
-        if (!base.exists()) {
+        if (!modelReady(base)) {
             try {
                 downloadAndUnzip(MODEL_URL, base)
             } catch (e: Exception) {
@@ -42,6 +40,12 @@ object SttEngine {
             Log.e(TAG, "model load failed: ${e.message}")
             false
         }
+    }
+
+    /** 模型是否已解压就绪：存在 conf 或 am 目录即视为可用 */
+    private fun modelReady(base: File): Boolean {
+        val dir = findModelDir(base)
+        return File(dir, "conf").exists() || File(dir, "am").exists()
     }
 
     fun createRecognizer(sampleRate: Float = 16000.0f): Recognizer? {

@@ -34,6 +34,9 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     private val _sttReady = MutableStateFlow(false)
     val sttReady: StateFlow<Boolean> = _sttReady
 
+    private val _sttMessage = MutableStateFlow("")
+    val sttMessage: StateFlow<String> = _sttMessage
+
     private var recorder: AudioRecorder? = null
     private var recognizer: Recognizer? = null
     private var currentNoteId: String? = null
@@ -42,7 +45,20 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     init {
         refresh()
         viewModelScope.launch(Dispatchers.IO) {
-            _sttReady.value = SttEngine.ensureModel(ctx)
+            val ok = SttEngine.ensureModel(ctx)
+            _sttReady.value = ok
+            if (!ok) _sttMessage.value = "语音模型下载失败（仅能录音）"
+        }
+    }
+
+    /** 手动触发/重试加载语音模型（首次点录音或失败后调用） */
+    private fun ensureStt() {
+        if (_sttReady.value) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _sttMessage.value = "正在下载语音模型…"
+            val ok = SttEngine.ensureModel(ctx)
+            _sttReady.value = ok
+            _sttMessage.value = if (ok) "语音模型就绪" else "语音模型下载失败（仅能录音）"
         }
     }
 
@@ -78,6 +94,7 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     fun startRecording() {
         if (_isRecording.value) return
         _liveText.value = ""
+        ensureStt()
         recognizer = if (_sttReady.value) SttEngine.createRecognizer() else null
         val id = UUID.randomUUID().toString()
         val wav = File(StorageLocator.audioDir(ctx), "$id.wav")
