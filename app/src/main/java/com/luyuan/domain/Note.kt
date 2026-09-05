@@ -22,10 +22,10 @@ data class Note(
     val deleted: Boolean = false,   // 软删标记
     val schema: Int = 1
 ) {
-    fun toJson(): String = noteJson.encodeToString(this)
+    fun toJson(): String = noteJson.encodeToString(Note.serializer(), this)
 
     companion object {
-        fun fromJson(s: String): Note = noteJson.decodeFromString(s)
+        fun fromJson(s: String): Note = noteJson.decodeFromString(Note.serializer(), s)
     }
 }
 

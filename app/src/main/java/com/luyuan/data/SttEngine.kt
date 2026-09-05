@@ -2,9 +2,9 @@ package com.luyuan.data
 
 import android.content.Context
 import android.util.Log
-import org.kaldi.vosk.Model
-import org.kaldi.vosk.KaldiRecognizer
-import org.kaldi.vosk.Vosk
+import org.vosk.Model
+import org.vosk.Recognizer
+import org.vosk.Vosk
 import java.io.File
 import java.net.URL
 import java.util.zip.ZipInputStream
@@ -46,9 +46,9 @@ object SttEngine {
         }
     }
 
-    fun createRecognizer(sampleRate: Double = 16000.0): KaldiRecognizer? {
+    fun createRecognizer(sampleRate: Double = 16000.0): Recognizer? {
         val m = model ?: return null
-        return try { KaldiRecognizer(m, sampleRate) } catch (e: Exception) { null }
+        return try { Recognizer(m, sampleRate) } catch (e: Exception) { null }
     }
 
     private fun findModelDir(base: File): File {

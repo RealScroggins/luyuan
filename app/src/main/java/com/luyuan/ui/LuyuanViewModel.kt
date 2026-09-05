@@ -14,7 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import org.kaldi.vosk.KaldiRecognizer
+import org.vosk.Recognizer
 import java.io.File
 import java.util.UUID
 
@@ -35,7 +35,7 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     val sttReady: StateFlow<Boolean> = _sttReady
 
     private var recorder: AudioRecorder? = null
-    private var recognizer: KaldiRecognizer? = null
+    private var recognizer: Recognizer? = null
     private var currentNoteId: String? = null
     private var currentAudioRel: String? = null
 
