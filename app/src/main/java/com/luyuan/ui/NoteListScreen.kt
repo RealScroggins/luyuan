@@ -67,7 +67,6 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.luyuan.data.SttEngine
 import com.luyuan.domain.Note
 import com.luyuan.platform.PermissionHelper
 import java.time.LocalDate
@@ -344,9 +343,6 @@ fun NoteListScreen(
             }
         }
     ) { padding ->
-        val sttReady by vm.sttReady.collectAsStateWithLifecycle()
-        val sttMessage by vm.sttMessage.collectAsStateWithLifecycle()
-        val downloadPct by SttEngine.downloadProgress.collectAsStateWithLifecycle()
         val refreshing by vm.refreshing.collectAsStateWithLifecycle()
         val refreshDone by vm.refreshDone.collectAsStateWithLifecycle()
 
@@ -382,20 +378,6 @@ fun NoteListScreen(
                 if (moodEnabled) {
                     MoodBar(notes)
                 }
-                Text(
-                    text = when {
-                        sttReady -> "🎤 语音转写已就绪"
-                        downloadPct in 0..99 -> "🎤 语音模型下载中 $downloadPct%"
-                        downloadPct == 100 -> "🎤 语音模型解压中…"
-                        sttMessage.isNotBlank() -> "🎤 $sttMessage（点此重试）"
-                        else -> "🎤 语音模型加载中…"
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
-                        .clickable { vm.retryStt() }
-                )
                 if (refreshing) {
                     Text(
                         "刷新中…",
