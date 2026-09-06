@@ -415,8 +415,7 @@ private fun remindBadge(note: Note) {
     val ra = note.remind_at ?: return
     if (ra.isBlank()) return
     val shown: String = try {
-        OffsetDateTime.parse(ra).atZone(java.time.ZoneId.systemDefault())
-            .toLocalDateTime()
+        OffsetDateTime.parse(ra).toLocalDateTime()
             .format(DateTimeFormatter.ofPattern("M.d HH:mm"))
     } catch (_: Exception) {
         try {
