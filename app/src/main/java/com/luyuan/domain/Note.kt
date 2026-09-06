@@ -23,6 +23,9 @@ data class Note(
     val audio: String? = null,      // 相对路径 audio/<id>.wav
     val transcribed: Boolean? = null,
     val deleted: Boolean = false,   // 软删标记
+    // 提醒（SYNC_FORMAT 2026-09-06 扩展）：缺省=不提醒；App v0.4 只读显示徽章，不做本地响铃
+    val remind_at: String? = null,
+    val remind_fired: Boolean? = null,
     val schema: Int = 1
 ) {
     fun toJson(): String = noteJson.encodeToString(Note.serializer(), this)
@@ -35,5 +38,6 @@ data class Note(
 val noteJson: Json = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
+    explicitNulls = false   // null 字段不写出（如 remind_at/transcribed），保持 JSON 干净
     prettyPrint = true
 }

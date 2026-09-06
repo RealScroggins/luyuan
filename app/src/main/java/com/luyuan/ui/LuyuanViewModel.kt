@@ -28,6 +28,9 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing
 
+    private val _trash = MutableStateFlow<List<Note>>(emptyList())
+    val trash: StateFlow<List<Note>> = _trash
+
     private val _liveText = MutableStateFlow("")
     val liveText: StateFlow<String> = _liveText
 
@@ -94,6 +97,27 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             NoteRepository.softDelete(ctx, id)
             refresh()
+        }
+    }
+
+    fun refreshTrash() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _trash.value = NoteRepository.listTrash(ctx)
+        }
+    }
+
+    fun restoreNote(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            NoteRepository.restoreNote(ctx, id)
+            _trash.value = NoteRepository.listTrash(ctx)
+            _notes.value = NoteRepository.listNotes(ctx)
+        }
+    }
+
+    fun purgeNote(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            NoteRepository.purgeNote(ctx, id)
+            _trash.value = NoteRepository.listTrash(ctx)
         }
     }
 

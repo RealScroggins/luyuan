@@ -19,6 +19,7 @@ import com.luyuan.ui.LuyuanViewModel
 import com.luyuan.ui.NoteListScreen
 import com.luyuan.ui.RecordScreen
 import com.luyuan.ui.SettingsScreen
+import com.luyuan.ui.TrashScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,7 +44,8 @@ fun AppRoot() {
                 vm = vm,
                 onRecord = { nav.navigate("record") },
                 onDetail = { id -> nav.navigate("detail/$id") },
-                onSettings = { nav.navigate("settings") }
+                onSettings = { nav.navigate("settings") },
+                onTrash = { nav.navigate("trash") }
             )
         }
         composable("record") {
@@ -58,6 +60,9 @@ fun AppRoot() {
         }
         composable("settings") {
             SettingsScreen(vm = vm, onBack = { nav.popBackStack() })
+        }
+        composable("trash") {
+            TrashScreen(vm = vm, onBack = { nav.popBackStack() })
         }
     }
 }

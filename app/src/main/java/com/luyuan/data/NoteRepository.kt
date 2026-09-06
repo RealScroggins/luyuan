@@ -17,15 +17,22 @@ import java.util.UUID
 object NoteRepository {
 
     fun listNotes(context: Context): List<Note> {
+        return allDistinct(context).filter { !it.deleted }.sortedByDescending { it.created_at }
+    }
+
+    /** 回收站：只看软删的 */
+    fun listTrash(context: Context): List<Note> {
+        return allDistinct(context).filter { it.deleted }.sortedByDescending { it.updated_at }
+    }
+
+    /** 全量扫描 + 同 id 去重（取 updated_at 最新那份），列表/回收站共用 */
+    private fun allDistinct(context: Context): List<Note> {
         val root = StorageLocator.getRoot(context)
         val found = mutableListOf<Note>()
         collectNotes(root, found, 0, 6)
         return found
-            // 同 id 多文件时（历史残留/冲突副本）取 updated_at 最新的那份
             .sortedByDescending { it.updated_at.ifBlank { it.created_at } }
             .distinctBy { it.id }
-            .filter { !it.deleted }
-            .sortedByDescending { it.created_at }
     }
 
     /** 递归扫描共享根目录：无论 Syncthing 把笔记映射到哪一层（notes/、data/notes/、根目录直放）都能读到 */
@@ -89,6 +96,23 @@ object NoteRepository {
     fun softDelete(context: Context, id: String) {
         val existing = getNote(context, id) ?: return
         saveNote(context, existing.copy(deleted = true, updated_at = nowIso()))
+    }
+
+    /** 从回收站恢复：置回 deleted=false，updated_at 刷新使撤销经 Syncthing 传到电脑端 */
+    fun restoreNote(context: Context, id: String) {
+        val n = findAny(context, id) ?: return
+        if (n.deleted) saveNote(context, n.copy(deleted = false, updated_at = nowIso()))
+    }
+
+    /** 彻底删除：物理删文件（不可恢复），与电脑端 purge 对齐 */
+    fun purgeNote(context: Context, id: String) {
+        val root = StorageLocator.getRoot(context)
+        findFileById(root, id, 0, 6)?.delete()
+    }
+
+    /** 查找含已软删在内的任意一条（getNote 只看未删除的） */
+    fun findAny(context: Context, id: String): Note? {
+        return allDistinct(context).firstOrNull { it.id == id }
     }
 
     fun createManual(

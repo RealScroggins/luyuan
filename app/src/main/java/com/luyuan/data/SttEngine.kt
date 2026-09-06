@@ -2,9 +2,12 @@ package com.luyuan.data
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import org.vosk.Model
 import org.vosk.Recognizer
 import java.io.File
+import java.net.HttpURLConnection
 import java.net.URL
 import java.util.zip.ZipInputStream
 
@@ -21,6 +24,10 @@ object SttEngine {
 
     private var model: Model? = null
 
+    /** 模型下载进度（百分比）；-1 = 没在下载，100 = 下载完成（解压中） */
+    private val _downloadProgress = MutableStateFlow(-1)
+    val downloadProgress: StateFlow<Int> = _downloadProgress
+
     /** 确保模型就绪；返回是否可用。失败不缓存，下次调用会重试下载。 */
     fun ensureModel(context: Context): Boolean {
         if (model != null) return true
@@ -30,9 +37,11 @@ object SttEngine {
                 downloadAndUnzip(MODEL_URL, base)
             } catch (e: Exception) {
                 Log.e(TAG, "model download failed: ${e.message}")
+                _downloadProgress.value = -1
                 return false
             }
         }
+        _downloadProgress.value = -1
         return try {
             model = Model(findModelDir(base).absolutePath)
             true
@@ -60,9 +69,29 @@ object SttEngine {
 
     private fun downloadAndUnzip(url: String, dest: File) {
         val tmp = File(dest.parentFile, dest.name + ".zip")
-        URL(url).openStream().use { input ->
-            tmp.outputStream().use { input.copyTo(it) }
+        val conn = URL(url).openConnection() as HttpURLConnection
+        conn.connectTimeout = 20000
+        conn.readTimeout = 30000
+        conn.connect()
+        val total = conn.contentLengthLong
+        conn.inputStream.use { input ->
+            tmp.outputStream().use { out ->
+                if (total > 0) {
+                    val buf = ByteArray(64 * 1024)
+                    var done = 0L
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        out.write(buf, 0, n)
+                        done += n
+                        _downloadProgress.value = ((done * 100) / total).toInt().coerceIn(0, 100)
+                    }
+                } else {
+                    input.copyTo(out)
+                }
+            }
         }
+        _downloadProgress.value = 100
         ZipInputStream(tmp.inputStream()).use { zis ->
             var entry = zis.nextEntry
             while (entry != null) {

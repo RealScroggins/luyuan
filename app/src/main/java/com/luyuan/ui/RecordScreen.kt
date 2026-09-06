@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.luyuan.data.SttEngine
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,9 +62,15 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                 Text(if (recording) "停止" else "录音")
             }
             if (!sttReady) {
+                val dl by SttEngine.downloadProgress.collectAsStateWithLifecycle()
+                val status = when {
+                    dl in 0..99 -> "模型下载中 $dl%…"
+                    dl == 100 -> "模型解压中…"
+                    else -> "本地识别模型未就绪：首次使用需联网下载（约 40MB），完成后即可离线转写。" +
+                            "当前录音仅保存音频文件，转写文本会留空。"
+                }
                 Text(
-                    text = "本地识别模型未就绪：首次使用需联网下载（约 40MB），完成后即可离线转写。" +
-                            "当前录音仅保存音频文件，转写文本会留空。",
+                    text = status,
                     style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.fillMaxWidth()
                 )

@@ -1,47 +1,71 @@
 package com.luyuan.ui
 
-import android.content.Intent
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.luyuan.data.NoteRepository
 import com.luyuan.platform.PermissionHelper
 import com.luyuan.platform.StorageLocator
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
+/** 设置页：共享目录防呆选择器（扫描候选点选，杜绝手打名字出错）+ 权限引导 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
-    var rootName by remember { mutableStateOf(StorageLocator.getRoot(context).name) }
-
     val allFiles = PermissionHelper.hasAllFiles(context)
     val audio = PermissionHelper.hasAudio(context)
+
+    var currentPath by remember { mutableStateOf(StorageLocator.getRoot(context).absolutePath) }
+    var candidates by remember { mutableStateOf(listOf<StorageLocator.Candidate>()) }
+    var scanning by remember { mutableStateOf(false) }
+
+    suspend fun rescan() {
+        scanning = true
+        val list = withContext(Dispatchers.IO) { StorageLocator.candidates(context) }
+        candidates = list
+        currentPath = StorageLocator.getRoot(context).absolutePath
+        scanning = false
+    }
+
+    LaunchedEffect(Unit) { rescan() }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("设置") },
+                title = { Text("设置", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
@@ -51,26 +75,81 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
         }
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text("共享目录", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(
-                value = rootName,
-                onValueChange = {
-                    rootName = it
-                    StorageLocator.setRootName(context, it)
-                    vm.refresh()
-                },
-                label = { Text("Luyuan 根目录名（位于 /storage/emulated/0/ 下）") },
-                modifier = Modifier.fillMaxWidth()
-            )
             Text(
-                "当前完整路径：${StorageLocator.getRoot(context).absolutePath}",
-                style = MaterialTheme.typography.labelSmall
+                "当前：$currentPath",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            val curCount = candidates.firstOrNull { it.path == currentPath }?.count
+            if (curCount != null) {
+                Text(
+                    "此目录扫到 $curCount 条笔记。" +
+                            if (curCount == 0) "如果是 0，多半是选错目录或 Syncthing 还没同步。" else "",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (curCount == 0) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Text("点选候选目录（按笔记数排序）：", style = MaterialTheme.typography.labelMedium)
+            for (c in candidates) {
+                val selected = c.path == currentPath
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            StorageLocator.setRootName(context, c.path.substringAfterLast('/'))
+                            currentPath = c.path
+                            vm.refresh()
+                        },
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (selected) MaterialTheme.colorScheme.surfaceVariant
+                        else MaterialTheme.colorScheme.surface
+                    ),
+                    border = BorderStroke(
+                        1.dp,
+                        if (selected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.outline
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            c.path.substringAfterLast('/') +
+                                    if (selected) "（当前）" else "",
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        Text(
+                            "${c.count} 条",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            if (scanning) {
+                Text("扫描中…", style = MaterialTheme.typography.labelSmall)
+            }
+            Button(onClick = { vm.refresh() }) { Text("重新读取列表") }
+
+            Text(
+                "注意：目录必须与 Syncthing App 里共享的文件夹完全一致（App 只负责读写，搬运交给 Syncthing）。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            HorizontalDivider()
             Text("权限", style = MaterialTheme.typography.titleMedium)
             Text("麦克风：${if (audio) "已授权" else "未授权"}")
             Text(
@@ -82,10 +161,9 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                 }) { Text("去开启所有文件访问") }
             }
 
-            HorizontalDivider()
             Text("关于", style = MaterialTheme.typography.titleMedium)
             Text(
-                "路远 安卓 App · 去中心化本地记事\n数据按 SYNC_FORMAT 与电脑端双向同步（Syncthing）。",
+                "路远 安卓 App v0.4 · 去中心化本地记事\n数据按 SYNC_FORMAT 与电脑端双向同步（Syncthing）。",
                 style = MaterialTheme.typography.labelSmall
             )
         }
