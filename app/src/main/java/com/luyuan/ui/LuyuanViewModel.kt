@@ -85,11 +85,62 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refresh()
+        startNotesWatcher()
         // 接管电脑端同步过来的提醒（含错过补弹）+ 日记提醒；开机由 BootReceiver 兜底
         viewModelScope.launch(Dispatchers.IO) {
             ReminderScheduler.rescheduleAll(ctx)
             JournalReminder.reschedule(ctx)
         }
+    }
+
+    // ---------- 共享目录监视：Syncthing 同步/PC 转写回写 → 列表自动更新（免手动刷新） ----------
+
+    private var notesWatcher: android.os.FileObserver? = null
+    private var contactsWatcher: android.os.FileObserver? = null
+
+    private fun startNotesWatcher() {
+        // 防抖：Syncthing 批量同步时几十个事件 → 合并成一次刷新
+        val pending = java.util.concurrent.atomic.AtomicBoolean(false)
+        fun scheduleRefresh() {
+            if (!pending.compareAndSet(false, true)) return
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    Thread.sleep(1500)
+                } catch (_: InterruptedException) {
+                }
+                _notes.value = NoteRepository.listNotes(ctx)
+                _todayDiary.value = NoteRepository.todayDiaryNote(ctx)
+                _contacts.value = ContactRepository.listContacts(ctx)
+                pending.set(false)
+            }
+        }
+        // 注意：FileObserver(File,int) 是 API 29+，minSdk 24 必须用路径字符串构造
+        notesWatcher = object : android.os.FileObserver(
+            StorageLocator.getRoot(ctx).absolutePath,
+            android.os.FileObserver.CLOSE_WRITE or android.os.FileObserver.MOVED_TO
+        ) {
+            override fun onEvent(event: Int, path: String?) {
+                if (path != null && path.endsWith(".json")) scheduleRefresh()
+            }
+        }.also { it.startWatching() }
+        // contacts/ 子目录单独监听（FileObserver 非递归）：手机勾选/电脑改动互相同步显示
+        val cdir = java.io.File(StorageLocator.getRoot(ctx), "contacts")
+        if (cdir.isDirectory) {
+            contactsWatcher = object : android.os.FileObserver(
+                cdir.absolutePath,
+                android.os.FileObserver.CLOSE_WRITE or android.os.FileObserver.MOVED_TO
+            ) {
+                override fun onEvent(event: Int, path: String?) {
+                    if (path != null && path.endsWith(".json")) scheduleRefresh()
+                }
+            }.also { it.startWatching() }
+        }
+    }
+
+    override fun onCleared() {
+        notesWatcher?.stopWatching()
+        contactsWatcher?.stopWatching()
+        super.onCleared()
     }
 
     fun refresh() {
@@ -453,6 +504,13 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
 
     /** APK 里是否打包了离线模型（决定录音页显示不显示该模式） */
     fun offlineBundled(): Boolean = com.luyuan.data.OfflineStt.bundled(ctx)
+
+    /** 进离线模式时后台预热模型：首次识别免等加载 */
+    fun warmupOffline() {
+        viewModelScope.launch(Dispatchers.IO) {
+            com.luyuan.data.OfflineStt.preload(ctx)
+        }
+    }
 
     /**
      * 离线模式点停止：录音先落 wav，本机转写成功 → 直接出文字落库（transcribed=true，原声保留）；

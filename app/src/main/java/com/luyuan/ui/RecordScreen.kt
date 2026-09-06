@@ -108,6 +108,9 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
             focusRequester.requestFocus()
             keyboard?.show()
         }
+        if (mode == MODE_OFFLINE) {
+            vm.warmupOffline() // 记忆为离线模式直接进来时也预热
+        }
     }
 
     Scaffold(
@@ -152,6 +155,7 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                         vm.cancelRecording()
                         vm.rememberVoiceMode("offline")
                         mode = MODE_OFFLINE
+                        vm.warmupOffline() // 后台先加载模型，首次识别免等
                     }
                 }
             }

@@ -44,6 +44,15 @@ object OfflineStt {
         return rec
     }
 
+    /** 预热：进离线模式时后台先加载模型，首次识别就不用等（失败静默，识别时再试） */
+    @Synchronized
+    fun preload(ctx: Context) {
+        try {
+            getRecognizer(ctx)
+        } catch (_: Throwable) {
+        }
+    }
+
     /** 释放模型（内存紧张时可调；下次识别会重新加载） */
     @Synchronized
     fun release() {
