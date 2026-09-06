@@ -593,6 +593,7 @@ fun NoteCard(
                     if (note.source == "voice") Color(0xFF059669) else Color(0xFF1D4ED8)
                 )
                 if (note.device == "phone") Badge("手机", Color(0xFF6B7280))
+                if (note.transcribed == false) Badge("⏳ 待转写", Color(0xFFD97706))
                 remindBadge(note)
                 for (t in note.tags.take(3)) Badge(t, Color(0xFF6B7280))
                 Spacer(Modifier.size(2.dp))

@@ -293,9 +293,17 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 取消本次识别（切键盘输入时用） */
+    /** 取消本次识别/录音（切模式时用） */
     fun cancelRecording() {
         speech?.let { releaseRecognizer(it) }
+        wavRecorder?.stop()
+        wavRecorder = null
+        wavId = null
+        _wavStartedAt.value = 0L
+        try {
+            ctx.stopService(Intent(ctx, com.luyuan.platform.LuyuanService::class.java))
+        } catch (_: Exception) {
+        }
         _isRecording.value = false
         _liveText.value = ""
     }
@@ -308,9 +316,9 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         if (speech === sr) speech = null
     }
 
-    /** 初始语音模式（本机系统识别失败过就直接键盘模式） */
-    fun preferredSystemVoice(): Boolean =
-        moodPrefs.getString("voice_mode", "auto") != "dictation"
+    /** 初始语音模式（auto=跟系统走 / dictation / record；本机系统识别失败过就直接录音待转写） */
+    fun preferredVoiceMode(): String =
+        moodPrefs.getString("voice_mode", "auto") ?: "auto"
 
     fun rememberVoiceMode(mode: String) {
         moodPrefs.edit().putString("voice_mode", mode).apply()
@@ -331,6 +339,78 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             val imgs = (_todayDiary.value?.images ?: emptyList()) - rel
             NoteRepository.setDiaryImages(ctx, imgs)
+            refresh()
+        }
+    }
+
+    // ---------- 录音待转写：原声 wav 经 Syncthing 回电脑，SenseVoice 转写后同步回来 ----------
+
+    private var wavRecorder: com.luyuan.data.AudioRecorder? = null
+    private var wavId: String? = null
+
+    private val _wavStartedAt = MutableStateFlow(0L)
+    val wavStartedAt: StateFlow<Long> = _wavStartedAt
+
+    fun startWavRecording(diary: Boolean = false) {
+        if (_isRecording.value) return
+        currentDiary = diary
+        _diaryMode.value = diary
+        _liveText.value = ""
+        _voiceError.value = null
+        _savedMsg.value = ""
+        val id = UUID.randomUUID().toString()
+        wavId = id
+        _wavStartedAt.value = System.currentTimeMillis()
+        wavRecorder = com.luyuan.data.AudioRecorder(
+            java.io.File(StorageLocator.audioDir(ctx), "$id.wav")
+        ) { }
+        try {
+            wavRecorder?.start()
+            _isRecording.value = true
+            val intent = Intent(ctx, com.luyuan.platform.LuyuanService::class.java).apply {
+                putExtra(com.luyuan.platform.LuyuanService.EXTRA_TEXT, "录音中…")
+            }
+            ctx.startForegroundService(intent)
+        } catch (_: Exception) {
+            wavRecorder = null
+            wavId = null
+            _wavStartedAt.value = 0L
+            _isRecording.value = false
+            _voiceError.value = "录音启动失败（检查麦克风权限）"
+        }
+    }
+
+    fun stopWavRecording() {
+        wavRecorder?.stop()
+        wavRecorder = null
+        try {
+            ctx.stopService(Intent(ctx, com.luyuan.platform.LuyuanService::class.java))
+        } catch (_: Exception) {
+        }
+        _isRecording.value = false
+        _wavStartedAt.value = 0L
+        val id = wavId
+        val diary = currentDiary
+        wavId = null
+        if (id == null) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val now = NoteRepository.nowIso()
+            NoteRepository.saveNote(
+                ctx,
+                Note(
+                    id = id,
+                    created_at = now,
+                    updated_at = now,
+                    text = "（语音待转写）",
+                    source = "voice",
+                    tags = if (diary) listOf("日记") else emptyList(),
+                    device = "phone",
+                    audio = "audio/$id.wav",
+                    transcribed = false,
+                    schema = 1
+                )
+            )
+            _savedMsg.value = "已录音，等电脑转写"
             refresh()
         }
     }
