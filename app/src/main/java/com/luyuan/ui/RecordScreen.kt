@@ -5,6 +5,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -48,9 +50,10 @@ import kotlinx.coroutines.delay
 private const val MODE_SYSTEM = 0
 private const val MODE_RECORD = 1
 private const val MODE_DICTATION = 2
+private const val MODE_OFFLINE = 3
 
-/** 语音记事页：即时识别（系统引擎）/ 录音待转写（回电脑 SenseVoice）/ 键盘输入 三模式 */
-@OptIn(ExperimentalMaterial3Api::class)
+/** 语音记事页：即时识别（系统引擎）/ 录音待转写（回电脑 SenseVoice）/ 键盘输入 / 离线识别（实验） 四模式 */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
     val recording by vm.isRecording.collectAsStateWithLifecycle()
@@ -77,12 +80,14 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
     }
 
     val canSystem = remember { com.luyuan.platform.SystemSpeech.available(context) }
+    val offlineOk = remember { vm.offlineBundled() }
     var mode by remember {
         val pref = vm.preferredVoiceMode()
         mutableStateOf(
             when {
                 pref == "dictation" -> MODE_DICTATION
                 pref == "record" -> MODE_RECORD
+                pref == "offline" && offlineOk -> MODE_OFFLINE
                 canSystem -> MODE_SYSTEM
                 else -> MODE_RECORD
             }
@@ -125,8 +130,8 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 模式切换
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // 模式切换（FlowRow：四个芯片窄屏也不挤出去）
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 ModeChip("🎙 即时识别", mode == MODE_SYSTEM) {
                     vm.cancelRecording()
                     vm.rememberVoiceMode("auto")
@@ -141,6 +146,13 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                     vm.cancelRecording()
                     vm.rememberVoiceMode("dictation")
                     mode = MODE_DICTATION
+                }
+                if (offlineOk) {
+                    ModeChip("📴 离线识别", mode == MODE_OFFLINE) {
+                        vm.cancelRecording()
+                        vm.rememberVoiceMode("offline")
+                        mode = MODE_OFFLINE
+                    }
                 }
             }
 
@@ -219,6 +231,66 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                             onClick = { vm.startWavRecording(diaryMode) },
                             modifier = Modifier.size(120.dp)
                         ) { Text(if (savedMsg.startsWith("已录音")) "再录一段" else "开始录音") }
+                    }
+                }
+
+                MODE_OFFLINE -> {
+                    Spacer(Modifier.height(4.dp))
+                    Text("📴", fontSize = 64.sp)
+                    val busy by vm.offlineBusy.collectAsStateWithLifecycle()
+                    when {
+                        busy -> {
+                            Text("⏳ 本机识别中…", fontSize = 20.sp)
+                            Text(
+                                "首次识别要先加载模型（几秒钟），请稍等",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        recording -> {
+                            var tick by remember { mutableLongStateOf(0L) }
+                            LaunchedEffect(wavStartedAt) {
+                                if (wavStartedAt > 0L) {
+                                    while (vm.isRecording.value) {
+                                        tick = System.currentTimeMillis()
+                                        delay(500)
+                                    }
+                                }
+                            }
+                            val secs = ((tick - wavStartedAt) / 1000).coerceAtLeast(0)
+                            Text(
+                                "● 录音中  %02d:%02d".format(secs / 60, secs % 60),
+                                fontSize = 22.sp,
+                                color = Color(0xFFEF4444)
+                            )
+                            Button(
+                                onClick = { vm.stopOfflineRecording() },
+                                modifier = Modifier.size(120.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                            ) { Text("停止") }
+                        }
+                        else -> {
+                            Text(
+                                if (savedMsg.isNotBlank()) "✅ 已记下" else "离线识别：不出网也能转文字",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                "小模型装在手机里；识别不出来会自动改成录音待电脑转写，内容不丢",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Button(
+                                onClick = { vm.startWavRecording(diaryMode) },
+                                modifier = Modifier.size(120.dp)
+                            ) { Text(if (savedMsg.isNotBlank()) "再录一段" else "开始录音") }
+                            voiceError?.let {
+                                Text(
+                                    "⚠️ $it",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
                     }
                 }
 

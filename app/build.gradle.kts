@@ -12,8 +12,17 @@ android {
         applicationId = "com.luyuan"
         minSdk = 24
         targetSdk = 34
-        versionCode = 16
-        versionName = "1.5.0-alpha.1"
+        versionCode = 17
+        versionName = "1.5.0-alpha.2"
+        // 离线识别（sherpa-onnx）jniLib 只带 arm64（用户真机为 arm64，控制 APK 体积）
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
+    }
+
+    androidResources {
+        // onnx 模型文件禁止 aapt 压缩：JNI 侧按未压缩资产读取
+        noCompress += "onnx"
     }
 
     signingConfigs {

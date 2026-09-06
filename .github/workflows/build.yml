@@ -41,6 +41,23 @@ jobs:
           rm /tmp/gradle.zip
           gradle --version
 
+      # 离线识别实验（sherpa-onnx）：JNI 库（arm64）+ 21MB 简体中文小模型，打进 APK
+      - name: Fetch sherpa-onnx libs & offline ASR model
+        run: |
+          set -e
+          wget -q https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.7/sherpa-onnx-v1.13.7-android.tar.bz2 -O /tmp/sherpa-android.tar.bz2
+          mkdir -p /tmp/sherpa_x && tar -xjf /tmp/sherpa-android.tar.bz2 -C /tmp/sherpa_x
+          JNI_DIR=$(dirname "$(find /tmp/sherpa_x -name "libsherpa-onnx-jni.so" -path "*arm64*" | head -1)")
+          mkdir -p app/src/main/jniLibs/arm64-v8a
+          cp "$JNI_DIR"/*.so app/src/main/jniLibs/arm64-v8a/
+          echo "--- jniLibs ---"; ls -la app/src/main/jniLibs/arm64-v8a
+          wget -q https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-ctc-zh-int8-2025-04-01.tar.bz2 -O /tmp/model.tar.bz2
+          mkdir -p /tmp/model_x && tar -xjf /tmp/model.tar.bz2 -C /tmp/model_x
+          MODEL_DIR=$(dirname "$(find /tmp/model_x -name "model.int8.onnx" | head -1)")
+          mkdir -p app/src/main/assets/zipformer-zh-small-ctc
+          cp "$MODEL_DIR/model.int8.onnx" "$MODEL_DIR/tokens.txt" app/src/main/assets/zipformer-zh-small-ctc/
+          echo "--- assets ---"; ls -la app/src/main/assets/zipformer-zh-small-ctc
+
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon
 

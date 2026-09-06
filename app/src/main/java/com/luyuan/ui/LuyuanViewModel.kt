@@ -446,6 +446,81 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---------- 离线识别（实验）：sherpa-onnx 内置小模型，无网转写；失败退回录音待转写 ----------
+
+    private val _offlineBusy = MutableStateFlow(false)
+    val offlineBusy: StateFlow<Boolean> = _offlineBusy
+
+    /** APK 里是否打包了离线模型（决定录音页显示不显示该模式） */
+    fun offlineBundled(): Boolean = com.luyuan.data.OfflineStt.bundled(ctx)
+
+    /**
+     * 离线模式点停止：录音先落 wav，本机转写成功 → 直接出文字落库（transcribed=true，原声保留）；
+     * 识别不出 → 原样按「录音待转写」落库，电脑 SenseVoice 接手，内容永不丢。
+     */
+    fun stopOfflineRecording() {
+        val id = wavId
+        wavRecorder?.stop()
+        wavRecorder = null
+        try {
+            ctx.stopService(Intent(ctx, com.luyuan.platform.LuyuanService::class.java))
+        } catch (_: Exception) {
+        }
+        _isRecording.value = false
+        _wavStartedAt.value = 0L
+        if (id == null) return
+        val diary = currentDiary
+        wavId = null
+        _offlineBusy.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            val now = NoteRepository.nowIso()
+            val wav = java.io.File(StorageLocator.audioDir(ctx), "$id.wav")
+            val text = try {
+                com.luyuan.data.OfflineStt.transcribeWav(ctx, wav)
+            } catch (e: Exception) {
+                android.util.Log.e("OfflineStt", "offline transcribe failed", e)
+                ""
+            }.trim()
+            if (text.isNotEmpty()) {
+                NoteRepository.saveNote(
+                    ctx,
+                    Note(
+                        id = id,
+                        created_at = now,
+                        updated_at = now,
+                        text = text,
+                        source = "voice",
+                        tags = if (diary) listOf("日记") else emptyList(),
+                        device = "phone",
+                        audio = "audio/$id.wav",
+                        transcribed = true,
+                        schema = 1
+                    )
+                )
+                _savedMsg.value = text
+            } else {
+                NoteRepository.saveNote(
+                    ctx,
+                    Note(
+                        id = id,
+                        created_at = now,
+                        updated_at = now,
+                        text = "（语音待转写）",
+                        source = "voice",
+                        tags = if (diary) listOf("日记") else emptyList(),
+                        device = "phone",
+                        audio = "audio/$id.wav",
+                        transcribed = false,
+                        schema = 1
+                    )
+                )
+                _voiceError.value = "离线识别没出文字，已改为录音待电脑转写"
+            }
+            _offlineBusy.value = false
+            refresh()
+        }
+    }
+
     /** 识别完成 → 落库（普通笔记 / 并入今天日记） */
     private suspend fun handleFinalText(text: String, diary: Boolean) {
         if (text.isBlank()) {
