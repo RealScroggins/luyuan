@@ -277,7 +277,7 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
     if (showEmoji) {
         val stickerLoader = remember(context) {
             coil.ImageLoader.Builder(context)
-                .components { add(coil.decode.SvgDecoder()) }
+                .components { add(coil.decode.SvgDecoder.Factory()) }
                 .build()
         }
         var stickerTab by remember { mutableStateOf(0) }
