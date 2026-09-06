@@ -128,6 +128,94 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
             ReminderScheduler.rescheduleAll(context)
+            JournalReminder.reschedule(context)
         }
+    }
+}
+
+// ---------- 每日日记提醒（负一屏「日记」页） ----------
+
+object JournalReminder {
+    const val CHANNEL_ID = "luyuan_journal"
+    private const val PREFS = "luyuan_prefs"
+    private const val KEY_ENABLED = "journal_enabled"
+    private const val KEY_HOUR = "journal_hour"
+    private const val KEY_MINUTE = "journal_minute"
+
+    private fun prefs(context: Context) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    fun isEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_ENABLED, false)
+
+    fun time(context: Context): Pair<Int, Int> =
+        prefs(context).getInt(KEY_HOUR, 21) to prefs(context).getInt(KEY_MINUTE, 0)
+
+    fun setEnabled(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean(KEY_ENABLED, on).apply()
+        if (on) reschedule(context) else cancel(context)
+    }
+
+    fun setTime(context: Context, hour: Int, minute: Int) {
+        prefs(context).edit().putInt(KEY_HOUR, hour).putInt(KEY_MINUTE, minute).apply()
+        if (isEnabled(context)) reschedule(context)
+    }
+
+    fun reschedule(context: Context) {
+        if (!isEnabled(context)) return
+        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val (h, m) = time(context)
+        val now = java.time.LocalDateTime.now()
+        var next = now.toLocalDate().atTime(h, m)
+        if (!next.isAfter(now)) next = next.plusDays(1)
+        val at = next.atOffset(java.time.OffsetDateTime.now().offset).toInstant().toEpochMilli()
+        val canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || am.canScheduleExactAlarms()
+        val pi = alarmIntent(context)
+        if (canExact) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+        else am.setWindow(AlarmManager.RTC_WAKEUP, at, 10 * 60 * 1000L, pi)
+    }
+
+    fun cancel(context: Context) {
+        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        am.cancel(alarmIntent(context))
+    }
+
+    private fun alarmIntent(context: Context): PendingIntent =
+        PendingIntent.getBroadcast(
+            context, 2001, Intent(context, JournalReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+    fun fire(context: Context) {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (nm.getNotificationChannel(CHANNEL_ID) == null) {
+            nm.createNotificationChannel(
+                NotificationChannel(CHANNEL_ID, "日记提醒", NotificationManager.IMPORTANCE_DEFAULT)
+            )
+        }
+        val pi = PendingIntent.getActivity(
+            context, 2002, Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val n = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_tile_mic)
+            .setContentTitle("📔 该记日记啦")
+            .setContentText("今天想记录点什么？点这里打开路远")
+            .setContentIntent(pi)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .build()
+        try {
+            androidx.core.app.NotificationManagerCompat.from(context).notify(2002, n)
+        } catch (_: SecurityException) {
+        }
+    }
+}
+
+/** 日记提醒到点：响一条 + 排明天 */
+class JournalReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        JournalReminder.fire(context)
+        JournalReminder.reschedule(context)
     }
 }

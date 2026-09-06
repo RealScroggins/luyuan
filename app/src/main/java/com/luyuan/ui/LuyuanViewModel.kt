@@ -10,6 +10,7 @@ import com.luyuan.data.NoteRepository
 import com.luyuan.data.SttEngine
 import com.luyuan.domain.Note
 import com.luyuan.platform.LuyuanService
+import com.luyuan.platform.JournalReminder
 import com.luyuan.platform.ReminderScheduler
 import com.luyuan.platform.StorageLocator
 import kotlinx.coroutines.Dispatchers
@@ -67,9 +68,10 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
             _sttReady.value = ok
             if (!ok) _sttMessage.value = "语音模型下载失败（仅能录音）"
         }
-        // 接管电脑端同步过来的提醒（含错过补弹）；开机由 BootReceiver 兜底
+        // 接管电脑端同步过来的提醒（含错过补弹）+ 日记提醒；开机由 BootReceiver 兜底
         viewModelScope.launch(Dispatchers.IO) {
             ReminderScheduler.rescheduleAll(ctx)
+            JournalReminder.reschedule(ctx)
         }
     }
 
@@ -77,6 +79,24 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         val next = !_moodEnabled.value
         moodPrefs.edit().putBoolean("mood_enabled", next).apply()
         _moodEnabled.value = next
+    }
+
+    // ---------- 日记提醒（负一屏） ----------
+
+    private val _journalEnabled = MutableStateFlow(JournalReminder.isEnabled(ctx))
+    val journalEnabled: StateFlow<Boolean> = _journalEnabled
+
+    private val _journalTime = MutableStateFlow(JournalReminder.time(ctx))
+    val journalTime: StateFlow<Pair<Int, Int>> = _journalTime
+
+    fun setJournalEnabled(on: Boolean) {
+        JournalReminder.setEnabled(ctx, on)
+        _journalEnabled.value = on
+    }
+
+    fun setJournalTime(hour: Int, minute: Int) {
+        JournalReminder.setTime(ctx, hour, minute)
+        _journalTime.value = hour to minute
     }
 
     /** 设提醒（null=取消），重排闹钟；电脑端到点也会响，两端互通 */

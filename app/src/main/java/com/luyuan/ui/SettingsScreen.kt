@@ -193,9 +193,19 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                 }) { Text("去开悬浮层") }
             }
 
+            Text("语音模型离线导入", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "在线下载慢？电脑下载模型后拷进手机即可，无需联网：\n" +
+                        "① 整个 zip（vosk-model-small-cn-0.22.zip）放到手机「Download/下载」文件夹；\n" +
+                        "② 或解压后的模型文件夹（内含 conf 目录）放「Download」或本 App 共享目录的 model/ 子文件夹；\n" +
+                        "③ 重启路远自动识别，模型状态会变成「已就绪」。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
             Text("关于", style = MaterialTheme.typography.titleMedium)
             Text(
-                "路远 安卓 App v0.6 · 去中心化本地记事\n数据按 SYNC_FORMAT 与电脑端双向同步（Syncthing）。",
+                "路远 安卓 App v0.7 · 去中心化本地记事\n数据按 SYNC_FORMAT 与电脑端双向同步（Syncthing）。",
                 style = MaterialTheme.typography.labelSmall
             )
         }

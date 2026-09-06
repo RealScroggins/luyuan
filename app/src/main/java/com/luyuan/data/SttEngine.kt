@@ -28,17 +28,39 @@ object SttEngine {
     private val _downloadProgress = MutableStateFlow(-1)
     val downloadProgress: StateFlow<Int> = _downloadProgress
 
-    /** 确保模型就绪；返回是否可用。失败不缓存，下次调用会重试下载。 */
+    /** 确保模型就绪；返回是否可用。失败不缓存，下次调用会重试下载。
+     *  优先级：内部已解压 > 导入的解压目录 > 导入的 zip > 联网下载。 */
     fun ensureModel(context: Context): Boolean {
         if (model != null) return true
         val base = File(context.getExternalFilesDir(null), MODEL_DIR_NAME)
         if (!modelReady(base)) {
-            try {
-                downloadAndUnzip(MODEL_URL, base)
-            } catch (e: Exception) {
-                Log.e(TAG, "model download failed: ${e.message}")
-                _downloadProgress.value = -1
-                return false
+            // ① 用户从电脑拷来的解压版模型（Download 目录 / 共享目录 model/）
+            findImportedModelDir(context)?.let { imported ->
+                return try {
+                    model = Model(imported.absolutePath)
+                    true
+                } catch (e: Exception) {
+                    Log.e(TAG, "imported model load failed: ${e.message}")
+                    false
+                }
+            }
+            // ② Download 目录里的模型 zip → 解压到内部（免联网）
+            findImportedZip(context)?.let { zip ->
+                try {
+                    unzip(zip, base)
+                } catch (e: Exception) {
+                    Log.e(TAG, "imported zip unzip failed: ${e.message}")
+                }
+            }
+            // ③ 都没有才联网下载
+            if (!modelReady(base)) {
+                try {
+                    downloadAndUnzip(MODEL_URL, base)
+                } catch (e: Exception) {
+                    Log.e(TAG, "model download failed: ${e.message}")
+                    _downloadProgress.value = -1
+                    return false
+                }
             }
         }
         _downloadProgress.value = -1
@@ -49,6 +71,38 @@ object SttEngine {
             Log.e(TAG, "model load failed: ${e.message}")
             false
         }
+    }
+
+    /** Download 目录里用户拷入的解压版模型（任意含 conf/am 子文件的文件夹） */
+    private fun findImportedModelDir(context: Context): File? {
+        val dl = android.os.Environment.getExternalStoragePublicDirectory(
+            android.os.Environment.DIRECTORY_DOWNLOADS
+        )
+        if (dl.isDirectory) {
+            for (d in dl.listFiles() ?: emptyArray()) {
+                if (d.isDirectory && (File(d, "conf").exists() || File(d, "am").exists())) return d
+            }
+        }
+        // 共享目录 model/（支持一层子目录），Syncthing 同步或手动放入均可
+        val root = com.luyuan.platform.StorageLocator.getRoot(context)
+        val m = File(root, "model")
+        if (File(m, "conf").exists() || File(m, "am").exists()) return m
+        for (d in m.listFiles()?.filter { it.isDirectory } ?: emptyList()) {
+            if (File(d, "conf").exists() || File(d, "am").exists()) return d
+        }
+        return null
+    }
+
+    /** Download 目录里用户拷入的模型 zip（标准名优先，其次任意含 vosk 的 zip） */
+    private fun findImportedZip(context: Context): File? {
+        val dl = android.os.Environment.getExternalStoragePublicDirectory(
+            android.os.Environment.DIRECTORY_DOWNLOADS
+        )
+        if (!dl.isDirectory) return null
+        File(dl, "vosk-model-small-cn-0.22.zip").takeIf { it.exists() }?.let { return it }
+        return dl.listFiles()
+            ?.filter { it.isFile && it.name.endsWith(".zip", true) && it.name.contains("vosk", true) }
+            ?.maxByOrNull { it.length() }
     }
 
     /** 模型是否已解压就绪：存在 conf 或 am 目录即视为可用 */
@@ -92,7 +146,12 @@ object SttEngine {
             }
         }
         _downloadProgress.value = 100
-        ZipInputStream(tmp.inputStream()).use { zis ->
+        unzip(tmp, dest)
+        tmp.delete()
+    }
+
+    private fun unzip(zipFile: File, dest: File) {
+        ZipInputStream(zipFile.inputStream()).use { zis ->
             var entry = zis.nextEntry
             while (entry != null) {
                 val outFile = File(dest, entry.name)
@@ -105,6 +164,5 @@ object SttEngine {
                 entry = zis.nextEntry
             }
         }
-        tmp.delete()
     }
 }
