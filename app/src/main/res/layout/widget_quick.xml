@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 桌面小部件布局：两枚文字按钮（记一笔 / 说话）。RemoteViews 只认传统 View，不能用 Compose -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:background="@drawable/widget_bg"
+    android:padding="10dp">
+
+    <TextView
+        android:id="@+id/widget_note"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="✏️ 记一笔"
+        android:textColor="#1F2937"
+        android:textSize="14sp" />
+
+    <TextView
+        android:id="@+id/widget_record"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="🎙️ 说话"
+        android:textColor="#1F2937"
+        android:textSize="14sp" />
+</LinearLayout>

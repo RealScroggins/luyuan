@@ -477,8 +477,10 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
             val wav = java.io.File(StorageLocator.audioDir(ctx), "$id.wav")
             val text = try {
                 com.luyuan.data.OfflineStt.transcribeWav(ctx, wav)
-            } catch (e: Exception) {
-                android.util.Log.e("OfflineStt", "offline transcribe failed", e)
+            } catch (t: Throwable) {
+                // 必须兜 Throwable：JNI 库缺失/ABI 不符抛 UnsatisfiedLinkError（Error 家族），
+                // 只接 Exception 会在离线模式闪退而不是退回录音待转写
+                android.util.Log.e("OfflineStt", "offline transcribe failed", t)
                 ""
             }.trim()
             if (text.isNotEmpty()) {
