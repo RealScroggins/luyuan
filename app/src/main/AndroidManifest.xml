@@ -42,6 +42,21 @@
             </intent-filter>
         </activity>
 
+        <!-- 系统分享接收：任意 App「分享 → 路远」一键存成记事（透明无界面） -->
+        <activity
+            android:name=".ShareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name=".platform.LuyuanService"
             android:exported="false"
