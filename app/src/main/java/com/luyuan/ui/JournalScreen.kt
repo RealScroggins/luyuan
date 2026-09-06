@@ -54,7 +54,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.luyuan.domain.Note
-import com.luyuan.platform.StorageLocatorimport java.io.File
+import com.luyuan.platform.StorageLocator
+import java.io.File
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
