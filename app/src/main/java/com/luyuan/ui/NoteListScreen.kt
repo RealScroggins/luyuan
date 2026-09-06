@@ -9,22 +9,22 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.ExperimentalMaterialApi
-import androidx.compose.material.pullrefresh.PullRefreshIndicator
-import androidx.compose.material.pullrefresh.pullRefresh
-import androidx.compose.material.pullrefresh.rememberPullToRefreshState
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -32,27 +32,73 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.luyuan.domain.Note
 import com.luyuan.platform.PermissionHelper
+import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
+/** 自实现下拉刷新：列表到顶继续下拉累计 overPull，松手超过阈值触发刷新。
+ *  不用任何 pullrefresh 库 API——不同 compose/material 版本签名差异太大，CI 连败两次的教训。 */
+private class PullRefreshConnection(
+    private val thresholdPx: Float,
+    private val onRefresh: () -> Unit
+) : NestedScrollConnection {
+    var overPull by mutableFloatStateOf(0f)
+        private set
+
+    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+        // 手指上滑时先把拉出的距离收回去，收完才放行给列表滚动
+        if (overPull > 0f && available.y < 0f) {
+            val take = available.y.coerceAtLeast(-overPull)
+            overPull += take
+            return Offset(0f, take)
+        }
+        return Offset.Zero
+    }
+
+    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+        // 列表到顶后仍往下拉的部分 → 计入下拉距离（带阻尼）
+        if (available.y > 0f) {
+            overPull = (overPull + available.y * 0.5f).coerceAtMost(thresholdPx * 1.8f)
+            return Offset(0f, available.y)
+        }
+        return Offset.Zero
+    }
+
+    override suspend fun onPreFling(available: Velocity): Velocity {
+        if (overPull >= thresholdPx) onRefresh()
+        return Velocity.Zero
+    }
+
+    fun reset() {
+        overPull = 0f
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NoteListScreen(
     vm: LuyuanViewModel,
@@ -97,21 +143,14 @@ fun NoteListScreen(
         val sttMessage by vm.sttMessage.collectAsStateWithLifecycle()
         val refreshing by vm.refreshing.collectAsStateWithLifecycle()
 
-        // 下拉刷新：列表到顶继续下拉 → 触发 vm.refresh() → 读盘完成自动收起
-        val pullState = rememberPullToRefreshState()
-        LaunchedEffect(pullState.isRefreshing) {
-            if (pullState.isRefreshing) vm.refresh()
-        }
-        LaunchedEffect(refreshing) {
-            if (!refreshing && pullState.isRefreshing) pullState.endRefresh()
-        }
+        // 下拉刷新：松手超阈值触发 vm.refresh()；刷新结束收起指示器
+        val density = LocalDensity.current
+        val thresholdPx = remember(density) { with(density) { 110.dp.toPx() } }
+        val indicatorSizePx = remember(density) { with(density) { 44.dp.toPx() } }
+        val pullConn = remember(thresholdPx) { PullRefreshConnection(thresholdPx) { vm.refresh() } }
+        LaunchedEffect(refreshing) { if (!refreshing) pullConn.reset() }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .nestedScroll(pullState.nestedScrollConnection)
-                .pullRefresh(pullState)
-        ) {
+        Box(modifier = Modifier.fillMaxSize().nestedScroll(pullConn)) {
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
                 if (!allFilesGranted) {
                     Card(
@@ -174,14 +213,26 @@ fun NoteListScreen(
                     }
                 }
             }
-            PullRefreshIndicator(
-                isRefreshing = pullState.isRefreshing,
-                state = pullState,
-                modifier = Modifier.align(Alignment.TopCenter),
-                // M2 指示器默认浅色，深色 UI 下显式配色
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            if (pullConn.overPull > 2f) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shadowElevation = 6.dp,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset {
+                            IntOffset(
+                                0,
+                                (pullConn.overPull - indicatorSizePx).roundToInt().coerceAtLeast(0)
+                            )
+                        }
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.padding(8.dp).size(28.dp),
+                        strokeWidth = 3.dp
+                    )
+                }
+            }
         }
     }
 }
