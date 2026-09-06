@@ -12,8 +12,8 @@ android {
         applicationId = "com.luyuan"
         minSdk = 24
         targetSdk = 34
-        versionCode = 14
-        versionName = "1.3.0"
+        versionCode = 15
+        versionName = "1.4.0"
     }
 
     signingConfigs {
@@ -78,6 +78,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("androidx.navigation:navigation-compose:2.7.7")
     implementation("com.alphacephei:vosk-android:0.3.47")
-    // 日记配图加载（本地文件）
+    // 日记配图加载（本地文件 + SVG 贴纸）
     implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("io.coil-kt:coil-svg:2.6.0")
 }

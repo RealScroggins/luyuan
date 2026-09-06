@@ -343,6 +343,37 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---------- 贴纸（Iconify SVG：Fluent 3D / OpenMoji，下载缓存到共享 images/stickers/） ----------
+
+    private val _stickerMsg = MutableStateFlow("")
+    val stickerMsg: StateFlow<String> = _stickerMsg
+
+    /** 下载贴纸到共享目录并作为配图插入今天日记；已缓存直接插 */
+    fun insertSticker(pack: String, name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val dir = java.io.File(StorageLocator.getRoot(ctx), "images/stickers").apply { mkdirs() }
+                val fname = "${pack}_${name}.svg"
+                val f = java.io.File(dir, fname)
+                if (!f.exists() || f.length() < 100L) {
+                    val url = "https://api.iconify.design/$pack/$name.svg"
+                    val data = java.net.URL(url).readBytes()
+                    if (data.size < 100) throw IllegalStateException("empty svg")
+                    f.writeBytes(data)
+                }
+                val rel = "images/stickers/$fname"
+                val cur = _todayDiary.value?.images ?: emptyList()
+                if (rel !in cur) {
+                    NoteRepository.setDiaryImages(ctx, cur + rel)
+                    refresh()
+                }
+                _stickerMsg.value = ""
+            } catch (e: Exception) {
+                _stickerMsg.value = "贴纸下载失败，检查网络后重试"
+            }
+        }
+    }
+
     // ---------- 录音待转写：原声 wav 经 Syncthing 回电脑，SenseVoice 转写后同步回来 ----------
 
     private var wavRecorder: com.luyuan.data.AudioRecorder? = null

@@ -54,8 +54,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.luyuan.domain.Note
-import com.luyuan.platform.StorageLocator
-import java.io.File
+import com.luyuan.platform.StorageLocatorimport java.io.File
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -275,25 +274,109 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
     }
 
     if (showEmoji) {
+        val stickerLoader = remember(context) {
+            coil.ImageLoader.Builder(context)
+                .components { add(coil.decode.SvgDecoder()) }
+                .build()
+        }
+        var stickerTab by remember { mutableStateOf(0) }
+        val stickerMsg by vm.stickerMsg.collectAsStateWithLifecycle()
         AlertDialog(
             onDismissRequest = { showEmoji = false },
-            title = { Text("插入表情", fontWeight = FontWeight.Bold) },
-            confirmButton = {
-                TextButton(onClick = { showEmoji = false }) { Text("关闭") }
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("插入表情", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { showEmoji = false }) { Text("关闭") }
+                }
             },
+            confirmButton = {},
             text = {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(8),
-                    modifier = Modifier.fillMaxWidth().height(300.dp)
-                ) {
-                    items(EMOJIS) { e ->
+                Column {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        TextButton(onClick = { stickerTab = 0 }) {
+                            Text(
+                                "Emoji",
+                                fontWeight = if (stickerTab == 0) FontWeight.Bold else FontWeight.Normal,
+                                color = if (stickerTab == 0) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        TextButton(onClick = { stickerTab = 1 }) {
+                            Text(
+                                "贴纸",
+                                fontWeight = if (stickerTab == 1) FontWeight.Bold else FontWeight.Normal,
+                                color = if (stickerTab == 1) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    if (stickerTab == 0) {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(8),
+                            modifier = Modifier.fillMaxWidth().height(300.dp)
+                        ) {
+                            items(EMOJIS) { e ->
+                                Text(
+                                    e,
+                                    fontSize = 24.sp,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    modifier = Modifier
+                                        .clickable { insertEmoji(e) }
+                                        .padding(4.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        var stickerPack by remember { mutableStateOf(0) }
+                        val pack = com.luyuan.data.StickerCatalog.packs[stickerPack]
+                        val stickersDir = java.io.File(
+                            StorageLocator.getRoot(context), "images/stickers"
+                        )
+                        if (stickerMsg.isNotBlank()) {
+                            Text(
+                                stickerMsg,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            for ((i, p) in com.luyuan.data.StickerCatalog.packs.withIndex()) {
+                                TextButton(onClick = { stickerPack = i }) {
+                                    Text(
+                                        p.label,
+                                        fontWeight = if (stickerPack == i) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (stickerPack == i) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(6),
+                            modifier = Modifier.fillMaxWidth().height(260.dp)
+                        ) {
+                            items(pack.stickers, key = { it }) { name ->
+                                val cached = java.io.File(stickersDir, "${pack.id}_${name}.svg")
+                                val model: Any =
+                                    if (cached.exists()) cached
+                                    else "https://api.iconify.design/${pack.id}/${name}.svg"
+                                AsyncImage(
+                                    model = model,
+                                    imageLoader = stickerLoader,
+                                    contentDescription = name,
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .padding(4.dp)
+                                        .clickable { vm.insertSticker(pack.id, name) }
+                                )
+                            }
+                        }
                         Text(
-                            e,
-                            fontSize = 24.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            modifier = Modifier
-                                .clickable { insertEmoji(e) }
-                                .padding(4.dp)
+                            "点贴纸自动下载并加入今天的配图（首次需联网，之后离线可用）",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
                         )
                     }
                 }
