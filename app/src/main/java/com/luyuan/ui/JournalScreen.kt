@@ -12,8 +12,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -59,10 +60,8 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 
-private val EMOJI_PICKS = listOf(
-    "😊", "😂", "🥰", "😭", "😡", "😮", "😰", "🤢",
-    "💪", "🎉", "❤️", "🙏", "👍", "🔥", "🌙", "☕"
-)
+/** 与 PC 端面板完全一致的表情库（app.js EMOJIS） */
+private val EMOJIS = ("😀 😄 😅 😂 🤣 😊 😍 😘 😜 🤪 🤔 🤨 😐 😴 🤤 😪 🥱 😏 😒 🥺 😢 😭 😤 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😥 😓 🤗 🤭 🤫 🤥 😶 😬 🙄 😯 😦 😧 😮 😲 🥳 😵 🤢 🤮 🤕 🤒 🤧 😷 🥴 😈 👿 💀 👻 👽 🤖 💩 😺 🙈 🙉 🐶 🐱 🐭 🐰 🦊 🐻 🐼 🐨 🐯 🦁 🐮 🐷 🐸 🐔 🐧 🦄 🐝 🦋 🌸 🌹 🌻 🌈 ⭐ 🌙 ☀️ ⛅ 🌧️ ❄️ 🔥 💧 🎉 🎊 🎁 🎂 🍀 🌰 🍕 🍔 🍜 🍚 🍣 🍰 🍦 ☕ 🍺 🍷 💪 👍 👎 👏 🙏 ❤️ 💔 💯 ⚡ 🎵 🎮 💤 💰 📚 ✏️ 🏃 🚴").split(" ")
 
 private fun journalParseDay(created: String): LocalDate? = try {
     OffsetDateTime.parse(created).toLocalDate()
@@ -79,6 +78,7 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
     val enabled by vm.journalEnabled.collectAsStateWithLifecycle()
     val time by vm.journalTime.collectAsStateWithLifecycle()
     var showTime by remember { mutableStateOf(false) }
+    var showEmoji by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     var diaryValue by remember { mutableStateOf(TextFieldValue("")) }
@@ -144,23 +144,19 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
                         minLines = 4,
                         maxLines = 12
                     )
-                    // 表情快捷栏
+                    // 表情 + 配图入口（点「表情」弹出全量表情面板，与 PC 端一致）
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 6.dp)
-                            .horizontalScroll(rememberScrollState())
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
                     ) {
-                        for (e in EMOJI_PICKS) {
-                            Text(
-                                e,
-                                fontSize = 22.sp,
-                                modifier = Modifier
-                                    .clickable { insertEmoji(e) }
-                                    .padding(horizontal = 5.dp, vertical = 2.dp)
-                            )
-                        }
+                        TextButton(onClick = { showEmoji = true }) { Text("😊 表情") }
+                        TextButton(onClick = { pickImage.launch("image/*") }) { Text("＋ 配图") }
+                        Text(
+                            "配图存共享 images/，电脑端可见",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                     // 配图（与 PC 端 images/ 共享）
                     val imgs = todayDiary?.images ?: emptyList()
@@ -275,6 +271,33 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
                 TextButton(onClick = { showTime = false }) { Text("取消") }
             },
             text = { TimePicker(state = timeState) }
+        )
+    }
+
+    if (showEmoji) {
+        AlertDialog(
+            onDismissRequest = { showEmoji = false },
+            title = { Text("插入表情", fontWeight = FontWeight.Bold) },
+            confirmButton = {
+                TextButton(onClick = { showEmoji = false }) { Text("关闭") }
+            },
+            text = {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(8),
+                    modifier = Modifier.fillMaxWidth().height(300.dp)
+                ) {
+                    items(EMOJIS) { e ->
+                        Text(
+                            e,
+                            fontSize = 24.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier
+                                .clickable { insertEmoji(e) }
+                                .padding(4.dp)
+                        )
+                    }
+                }
+            }
         )
     }
 

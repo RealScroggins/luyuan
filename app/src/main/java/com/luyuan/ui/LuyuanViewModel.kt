@@ -180,6 +180,15 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** 批量软删（多选删除，进回收站可恢复，与 PC 端语义一致） */
+    fun deleteMany(ids: Collection<String>) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            for (id in ids) NoteRepository.softDelete(ctx, id)
+            refresh()
+        }
+    }
+
     fun refreshTrash() {
         viewModelScope.launch(Dispatchers.IO) {
             _trash.value = NoteRepository.listTrash(ctx)

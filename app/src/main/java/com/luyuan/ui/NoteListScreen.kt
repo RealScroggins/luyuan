@@ -22,14 +22,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Mood
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -257,6 +262,8 @@ fun NoteListScreen(
     val moodEnabled by vm.moodEnabled.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
     var draft by remember { mutableStateOf("") }
+    var selecting by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(setOf<String>()) }
     val context = LocalContext.current
     val allFilesGranted = PermissionHelper.hasAllFiles(context)
 
@@ -274,8 +281,39 @@ fun NoteListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("路远 · 记事", fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        if (selecting) "已选 ${selected.size}" else "路远 · 记事",
+                        fontWeight = FontWeight.Bold
+                    )
+                },
                 actions = {
+                    if (selecting) {
+                        IconButton(onClick = {
+                            selected = if (selected.size == filtered.size) emptySet()
+                            else filtered.map { it.id }.toSet()
+                        }) {
+                            Icon(Icons.Default.SelectAll, contentDescription = "全选/全不选")
+                        }
+                        IconButton(
+                            enabled = selected.isNotEmpty(),
+                            onClick = {
+                                vm.deleteMany(selected)
+                                selected = emptySet()
+                            }
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "删除选中")
+                        }
+                    }
+                    IconButton(onClick = {
+                        selecting = !selecting
+                        if (!selecting) selected = emptySet()
+                    }) {
+                        Icon(
+                            if (selecting) Icons.Default.Close else Icons.Default.Checklist,
+                            contentDescription = "多选"
+                        )
+                    }
                     IconButton(onClick = { vm.toggleMood() }) {
                         Icon(
                             Icons.Default.Mood,
@@ -416,7 +454,13 @@ fun NoteListScreen(
                             NoteCard(
                                 note = note,
                                 query = query,
-                                onClick = { onDetail(note.id) }
+                                selecting = selecting,
+                                isSelected = note.id in selected,
+                                onClick = { onDetail(note.id) },
+                                onToggleSelect = {
+                                    selected = if (note.id in selected) selected - note.id
+                                    else selected + note.id
+                                }
                             )
                         }
                     }
@@ -486,15 +530,38 @@ private fun MoodBar(notes: List<Note>) {
 }
 
 @Composable
-fun NoteCard(note: Note, query: String = "", onClick: () -> Unit) {
+fun NoteCard(
+    note: Note,
+    query: String = "",
+    selecting: Boolean = false,
+    isSelected: Boolean = false,
+    onClick: () -> Unit,
+    onToggleSelect: () -> Unit = {}
+) {
     val (title, summary) = remember(note.text) { splitTitleSummary(note.text) }
     Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().clickable {
+            if (selecting) onToggleSelect() else onClick()
+        },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        border = BorderStroke(
+            1.dp,
+            if (isSelected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.outline
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            if (selecting) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = isSelected, onCheckedChange = { onToggleSelect() })
+                    Text(
+                        if (isSelected) "已选择" else "选择",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             if (title.isNotEmpty()) {
                 Text(
                     text = highlighted(title, query),
