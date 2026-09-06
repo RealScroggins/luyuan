@@ -1,11 +1,16 @@
 package com.luyuan
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -22,22 +27,41 @@ import com.luyuan.ui.SettingsScreen
 import com.luyuan.ui.TrashScreen
 
 class MainActivity : ComponentActivity() {
+
+    /** 快捷磁贴/通知唤起时的目标页（"record" = 进录音页直接开录） */
+    private var autoRoute by mutableStateOf("list")
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        autoRoute = routeFromIntent(intent)
         setContent {
             LuyuanTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    AppRoot()
+                    AppRoot(startDest = autoRoute)
                 }
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (routeFromIntent(intent) == "record") autoRoute = "record"
+    }
+
+    private fun routeFromIntent(i: Intent?): String =
+        if (i?.getStringExtra("auto") == "record") "record" else "list"
 }
 
 @Composable
-fun AppRoot() {
+fun AppRoot(startDest: String) {
     val nav = rememberNavController()
     val vm: LuyuanViewModel = viewModel()
+    LaunchedEffect(startDest) {
+        if (startDest == "record") {
+            vm.startRecording()
+            nav.navigate("record") { launchSingleTop = true }
+        }
+    }
     NavHost(navController = nav, startDestination = "list") {
         composable("list") {
             NoteListScreen(

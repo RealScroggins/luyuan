@@ -1,6 +1,7 @@
 package com.luyuan.ui
 
 import android.app.Application
+import android.content.Context
 import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -9,6 +10,7 @@ import com.luyuan.data.NoteRepository
 import com.luyuan.data.SttEngine
 import com.luyuan.domain.Note
 import com.luyuan.platform.LuyuanService
+import com.luyuan.platform.ReminderScheduler
 import com.luyuan.platform.StorageLocator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,8 +30,18 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing
 
+    /** 每完成一次刷新 +1：下拉刷新的指示器靠它收回（refreshing 布尔会被撞帧合并吞掉，代际不会） */
+    private val _refreshDone = MutableStateFlow(0)
+    val refreshDone: StateFlow<Int> = _refreshDone
+
     private val _trash = MutableStateFlow<List<Note>>(emptyList())
     val trash: StateFlow<List<Note>> = _trash
+
+    /** 心情时间线开关（本地偏好记忆，默认开） */
+    private val moodPrefs = app.applicationContext
+        .getSharedPreferences("luyuan_prefs", Context.MODE_PRIVATE)
+    private val _moodEnabled = MutableStateFlow(moodPrefs.getBoolean("mood_enabled", true))
+    val moodEnabled: StateFlow<Boolean> = _moodEnabled
 
     private val _liveText = MutableStateFlow("")
     val liveText: StateFlow<String> = _liveText
@@ -55,6 +67,26 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
             _sttReady.value = ok
             if (!ok) _sttMessage.value = "语音模型下载失败（仅能录音）"
         }
+        // 接管电脑端同步过来的提醒（含错过补弹）；开机由 BootReceiver 兜底
+        viewModelScope.launch(Dispatchers.IO) {
+            ReminderScheduler.rescheduleAll(ctx)
+        }
+    }
+
+    fun toggleMood() {
+        val next = !_moodEnabled.value
+        moodPrefs.edit().putBoolean("mood_enabled", next).apply()
+        _moodEnabled.value = next
+    }
+
+    /** 设提醒（null=取消），重排闹钟；电脑端到点也会响，两端互通 */
+    fun setReminder(id: String, remindAtIso: String?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            NoteRepository.setReminder(ctx, id, remindAtIso)
+            ReminderScheduler.cancel(ctx, id)
+            ReminderScheduler.rescheduleAll(ctx)
+            _notes.value = NoteRepository.listNotes(ctx)
+        }
     }
 
     /** 手动触发/重试加载语音模型（首次点录音或失败后调用） */
@@ -74,6 +106,7 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             _notes.value = NoteRepository.listNotes(ctx)
             _refreshing.value = false
+            _refreshDone.value += 1
         }
     }
 

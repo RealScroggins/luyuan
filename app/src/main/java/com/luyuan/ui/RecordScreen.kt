@@ -1,5 +1,8 @@
 package com.luyuan.ui
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -19,12 +22,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.luyuan.data.SttEngine
+import com.luyuan.platform.PermissionHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,6 +39,23 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
     val recording by vm.isRecording.collectAsStateWithLifecycle()
     val live by vm.liveText.collectAsStateWithLifecycle()
     val sttReady by vm.sttReady.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    // 麦克风 / 通知权限：进页就申请（磁贴直达时可能还没授过）
+    val audioLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+    val notifLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+    LaunchedEffect(Unit) {
+        if (!PermissionHelper.hasAudio(context)) {
+            audioLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+        if (!PermissionHelper.hasPostNotifications(context)) {
+            notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -50,7 +74,11 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(8.dp))
+
+            // 小猫录音动画占位：朋友的图/动图画好后替换这行（竖耳朵=聆听中）
+            Text("🐱", fontSize = 64.sp)
+
             Text(
                 text = if (recording) (live.ifBlank { "聆听中…" }) else "点击下方按钮开始录音",
                 style = MaterialTheme.typography.bodyLarge

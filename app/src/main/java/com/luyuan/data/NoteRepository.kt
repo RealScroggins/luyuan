@@ -115,6 +115,51 @@ object NoteRepository {
         return allDistinct(context).firstOrNull { it.id == id }
     }
 
+    // ---------- 提醒（SYNC_FORMAT remind_at / remind_fired，两端互通） ----------
+
+    /** 设提醒：remindAtIso 为 null = 取消。新提醒置 remind_fired=false。 */
+    fun setReminder(context: Context, id: String, remindAtIso: String?) {
+        val existing = findAny(context, id) ?: return
+        saveNote(
+            context,
+            existing.copy(
+                remind_at = remindAtIso,
+                remind_fired = if (remindAtIso == null) existing.remind_fired else false,
+                updated_at = nowIso()
+            )
+        )
+    }
+
+    /** 到点/错过补弹后标记已触发（防重复响） */
+    fun markReminderFired(context: Context, id: String) {
+        val n = findAny(context, id) ?: return
+        if (n.remind_fired != true) {
+            saveNote(context, n.copy(remind_fired = true, updated_at = nowIso()))
+        }
+    }
+
+    /** 待提醒清单：未删 + 设了 remind_at + 还没响过（含已过期未响的，用于错过补弹） */
+    fun pendingReminders(context: Context): List<Note> {
+        return allDistinct(context).filter {
+            !it.deleted && it.remind_fired != true && !it.remind_at.isNullOrBlank()
+        }
+    }
+
+    /** remind_at → epoch 毫秒（带时区直接转，naive 按本地时区），解析失败返回 null */
+    fun remindAtMillis(note: Note): Long? {
+        val ra = note.remind_at ?: return null
+        return try {
+            OffsetDateTime.parse(ra).toInstant().toEpochMilli()
+        } catch (_: Exception) {
+            try {
+                LocalDateTime.parse(ra).atOffset(OffsetDateTime.now().offset)
+                    .toInstant().toEpochMilli()
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
     fun createManual(
         context: Context,
         text: String,

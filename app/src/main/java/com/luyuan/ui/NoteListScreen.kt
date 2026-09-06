@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +24,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Mood
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -30,7 +32,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +56,9 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -92,16 +96,19 @@ private class PullRefreshConnection(
     }
 
     override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-        // 列表到顶后仍往下拉的部分 → 计入下拉距离（带阻尼）
+        // 列表到顶后仍往下拉的部分 → 计入下拉距离（带阻尼，拉不远）
         if (available.y > 0f) {
-            overPull = (overPull + available.y * 0.5f).coerceAtMost(thresholdPx * 1.8f)
+            overPull = (overPull + available.y * 0.5f).coerceAtMost(thresholdPx * 1.25f)
             return Offset(0f, available.y)
         }
         return Offset.Zero
     }
 
     override suspend fun onPreFling(available: Velocity): Velocity {
-        if (overPull >= thresholdPx) onRefresh()
+        if (overPull >= thresholdPx) {
+            overPull = thresholdPx // 触发后停在标准位置，刷新完成由 refreshDone 收回
+            onRefresh()
+        }
         return Velocity.Zero
     }
 
@@ -161,6 +168,46 @@ private fun groupByDay(notes: List<Note>): List<DayGroup> {
     return out
 }
 
+// ---------- 心情时间线（SenseVoice 情绪 emoji 按天统计） ----------
+
+private val MOOD_EMOJIS = setOf("😊", "😡", "😮", "😔", "😰", "🤢")
+
+private fun shortDayLabel(d: LocalDate): String {
+    val today = LocalDate.now()
+    return when {
+        d == today -> "今"
+        d == today.minusDays(1) -> "昨"
+        else -> when (d.dayOfWeek.value) {
+            1 -> "一"; 2 -> "二"; 3 -> "三"; 4 -> "四"; 5 -> "五"; 6 -> "六"; else -> "日"
+        }
+    }
+}
+
+private fun moodByDay(notes: List<Note>): List<Pair<LocalDate, Map<String, Int>>> {
+    val today = LocalDate.now()
+    val grouped = HashMap<LocalDate, MutableMap<String, Int>>()
+    for (n in notes) {
+        val d = parseDay(n.created_at) ?: continue
+        // emoji 在 UTF-16 是代理对，必须按 code point 遍历（PC 端踩过同样的坑）
+        var i = 0
+        while (i < n.text.length) {
+            val cp = n.text.codePointAt(i)
+            val s = String(Character.toChars(cp))
+            if (s in MOOD_EMOJIS) {
+                grouped.getOrPut(d) { HashMap() }.merge(s, 1) { a, b -> a + b }
+            }
+            i += Character.charCount(cp)
+        }
+    }
+    return (6 downTo 0).map { off ->
+        val d = today.minusDays(off.toLong())
+        d to (grouped[d]?.toMap() ?: emptyMap())
+    }
+}
+
+private fun moodSummary(counts: Map<String, Int>): String =
+    if (counts.isEmpty()) "·" else counts.entries.joinToString("") { "${it.key}${it.value}" }
+
 // ---------- 卡片文案 ----------
 
 /** 首行（≤16字）当标题，剩余当摘要 */
@@ -175,6 +222,27 @@ private fun splitTitleSummary(text: String): Pair<String, String> {
     return title to rest.trim().take(64)
 }
 
+/** 搜索命中高亮（琥珀底，同 PC 面板） */
+private fun highlighted(text: String, query: String): AnnotatedString {
+    val q = query.trim()
+    if (q.isEmpty()) return AnnotatedString(text)
+    val lower = text.lowercase()
+    val qLower = q.lowercase()
+    return buildAnnotatedString {
+        append(text)
+        var i = 0
+        while (true) {
+            val found = lower.indexOf(qLower, i)
+            if (found < 0) break
+            addStyle(
+                SpanStyle(background = Color(0xFFFEF08A), color = Color(0xFF713F12)),
+                found, found + q.length
+            )
+            i = found + q.length
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NoteListScreen(
@@ -185,6 +253,7 @@ fun NoteListScreen(
     onTrash: () -> Unit
 ) {
     val notes by vm.notes.collectAsStateWithLifecycle()
+    val moodEnabled by vm.moodEnabled.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
     var draft by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -206,6 +275,14 @@ fun NoteListScreen(
             TopAppBar(
                 title = { Text("路远 · 记事", fontWeight = FontWeight.Bold) },
                 actions = {
+                    IconButton(onClick = { vm.toggleMood() }) {
+                        Icon(
+                            Icons.Default.Mood,
+                            contentDescription = "心情时间线开关",
+                            tint = if (moodEnabled) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     IconButton(onClick = onTrash) {
                         Icon(Icons.Default.DeleteOutline, contentDescription = "回收站")
                     }
@@ -215,9 +292,53 @@ fun NoteListScreen(
                 }
             )
         },
-        floatingActionButton = {
-            FloatingActionButton(onClick = onRecord) {
-                Icon(Icons.Default.Mic, contentDescription = "录音")
+        // 输入区沉底：拇指最好按的位置（搜索在上，记一笔+录音键贴底）
+        bottomBar = {
+            Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 8.dp) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        placeholder = { Text("搜索…") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = draft,
+                            onValueChange = { draft = it },
+                            placeholder = { Text("记一笔，回车保存") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = {
+                                if (draft.isNotBlank()) {
+                                    vm.addManual(draft)
+                                    draft = ""
+                                }
+                            }),
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.size(8.dp))
+                        Button(
+                            onClick = {
+                                vm.startRecording()
+                                onRecord()
+                            },
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(0.dp),
+                            modifier = Modifier.size(54.dp)
+                        ) {
+                            Icon(Icons.Default.Mic, contentDescription = "录音")
+                        }
+                    }
+                }
             }
         }
     ) { padding ->
@@ -225,13 +346,14 @@ fun NoteListScreen(
         val sttMessage by vm.sttMessage.collectAsStateWithLifecycle()
         val downloadPct by SttEngine.downloadProgress.collectAsStateWithLifecycle()
         val refreshing by vm.refreshing.collectAsStateWithLifecycle()
+        val refreshDone by vm.refreshDone.collectAsStateWithLifecycle()
 
-        // 下拉刷新：松手超阈值触发 vm.refresh()；刷新结束收起指示器
+        // 下拉刷新：松手超阈值触发 vm.refresh()；刷新完成（refreshDone 变化）自动收回
         val density = LocalDensity.current
         val thresholdPx = remember(density) { with(density) { 110.dp.toPx() } }
         val indicatorSizePx = remember(density) { with(density) { 44.dp.toPx() } }
         val pullConn = remember(thresholdPx) { PullRefreshConnection(thresholdPx) { vm.refresh() } }
-        LaunchedEffect(refreshing) { if (!refreshing) pullConn.reset() }
+        LaunchedEffect(refreshDone) { pullConn.reset() }
 
         Box(modifier = Modifier.fillMaxSize().nestedScroll(pullConn)) {
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -255,26 +377,9 @@ fun NoteListScreen(
                         }
                     }
                 }
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    placeholder = { Text("搜索…") },
-                    modifier = Modifier.fillMaxWidth().padding(12.dp)
-                )
-                OutlinedTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    placeholder = { Text("记一笔，回车保存") },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = {
-                        if (draft.isNotBlank()) {
-                            vm.addManual(draft)
-                            draft = ""
-                        }
-                    })
-                )
+                if (moodEnabled) {
+                    MoodBar(notes)
+                }
                 Text(
                     text = when {
                         sttReady -> "🎤 语音转写已就绪"
@@ -287,11 +392,19 @@ fun NoteListScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                 )
+                if (refreshing) {
+                    Text(
+                        "刷新中…",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize()
                         .padding(horizontal = 12.dp)
-                        .padding(bottom = 88.dp)
+                        .padding(top = 4.dp)
                 ) {
                     for (g in groups) {
                         item(key = "h_${g.label}_${g.notes.size}") {
@@ -314,7 +427,11 @@ fun NoteListScreen(
                             }
                         }
                         items(g.notes, key = { it.id }) { note ->
-                            NoteCard(note = note, onClick = { onDetail(note.id) })
+                            NoteCard(
+                                note = note,
+                                query = query,
+                                onClick = { onDetail(note.id) }
+                            )
                         }
                     }
                 }
@@ -356,7 +473,34 @@ private fun Badge(text: String, color: Color) {
 }
 
 @Composable
-fun NoteCard(note: Note, onClick: () -> Unit) {
+private fun MoodBar(notes: List<Note>) {
+    val days = remember(notes) { moodByDay(notes) }
+    if (days.all { it.second.isEmpty() }) return
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            for ((date, counts) in days) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        shortDayLabel(date),
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(moodSummary(counts), fontSize = 13.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun NoteCard(note: Note, query: String = "", onClick: () -> Unit) {
     val (title, summary) = remember(note.text) { splitTitleSummary(note.text) }
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
@@ -367,7 +511,7 @@ fun NoteCard(note: Note, onClick: () -> Unit) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             if (title.isNotEmpty()) {
                 Text(
-                    text = title,
+                    text = highlighted(title, query),
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
                     color = Color(0xFF111827),
@@ -377,7 +521,7 @@ fun NoteCard(note: Note, onClick: () -> Unit) {
             }
             if (summary.isNotEmpty()) {
                 Text(
-                    text = summary,
+                    text = highlighted(summary, query),
                     color = Color(0xFF6B7280),
                     fontSize = 13.sp,
                     lineHeight = 19.sp,
