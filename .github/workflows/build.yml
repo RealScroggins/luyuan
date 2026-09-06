@@ -41,7 +41,8 @@ jobs:
           rm /tmp/gradle.zip
           gradle --version
 
-      # 离线识别实验（sherpa-onnx）：JNI 库（arm64）+ 流式中文 transducer 模型（支持花名册热词），打进 APK
+      # 离线识别实验（sherpa-onnx）：JNI 库（arm64）+ 21MB 简体中文 CTC 小模型（2025训练，
+      # 实测优于 62MB transducer(2023)，勿回退大模型），打进 APK
       - name: Fetch sherpa-onnx libs & offline ASR model
         run: |
           set -e
@@ -51,17 +52,12 @@ jobs:
           mkdir -p app/src/main/jniLibs/arm64-v8a
           cp "$JNI_DIR"/*.so app/src/main/jniLibs/arm64-v8a/
           echo "--- jniLibs ---"; ls -la app/src/main/jniLibs/arm64-v8a
-          wget -q https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-multi-zh-hans-int8-2023-12-13.tar.bz2 -O /tmp/model.tar.bz2
+          wget -q https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-ctc-zh-int8-2025-04-01.tar.bz2 -O /tmp/model.tar.bz2
           mkdir -p /tmp/model_x && tar -xjf /tmp/model.tar.bz2 -C /tmp/model_x
-          MODEL_DIR=$(dirname "$(find /tmp/model_x -name "tokens.txt" | head -1)")
-          AS=app/src/main/assets/zipformer-zh-transducer
-          mkdir -p "$AS"
-          # encoder/joiner 优先 int8，decoder 用 float（官方推荐配方）；统一改短名，Kotlin 按固定名引用
-          cp "$(find "$MODEL_DIR" -name "encoder*int8*.onnx" | head -1)" "$AS/encoder.onnx"
-          cp "$(find "$MODEL_DIR" -name "decoder*.onnx" ! -name "*int8*" | head -1)" "$AS/decoder.onnx"
-          cp "$(find "$MODEL_DIR" -name "joiner*int8*.onnx" | head -1)" "$AS/joiner.onnx"
-          cp "$(find "$MODEL_DIR" -name "tokens.txt" | head -1)" "$AS/tokens.txt"
-          echo "--- assets ---"; ls -la "$AS"
+          MODEL_DIR=$(dirname "$(find /tmp/model_x -name "model.int8.onnx" | head -1)")
+          mkdir -p app/src/main/assets/zipformer-zh-small-ctc
+          cp "$MODEL_DIR/model.int8.onnx" "$MODEL_DIR/tokens.txt" app/src/main/assets/zipformer-zh-small-ctc/
+          echo "--- assets ---"; ls -la app/src/main/assets/zipformer-zh-small-ctc
 
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon

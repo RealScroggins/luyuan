@@ -4,20 +4,22 @@ import android.content.Context
 import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
-import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
+import com.k2fsa.sherpa.onnx.OnlineZipformer2CtcModelConfig
 import java.io.File
 
 /**
- * 离线语音识别（实验）：sherpa-onnx 内置模型，完全不出网。
- * - 模型 sherpa-onnx-streaming-zipformer-multi-zh-hans-int8-2023-12-13（约 62MB，简体中文 transducer）
- *   由 CI 打进 APK assets（zipformer-zh-transducer/），与 sherpa-onnx v1.13.7 jniLib 配套
- * - transducer 架构支持热词：录音页转写时注入联系人花名册，同音人名优先按名单写法出字
- * - 首次使用加载模型数秒后常驻；识别失败抛异常，由调用方兜底
+ * 离线语音识别（实验）：sherpa-onnx 内置小模型，完全不出网。
+ * - 模型 sherpa-onnx-streaming-zipformer-small-ctc-zh-int8-2025-04-01（约 21MB，简体中文）
+ *   由 CI 打进 APK assets（zipformer-zh-small-ctc/），与 sherpa-onnx v1.13.7 jniLib 配套
+ * - 首次使用加载模型约 1-3 秒，之后常驻；识别失败抛异常，由调用方兜底
  *   （兜底 = 落库为「录音待转写」让电脑 SenseVoice 转写，原声永不丢）
+ * - ⚠️ 2026-09-07 实测结论（勿回退大模型）：62MB transducer(2023训练) 人名/日常均不敌本
+ *   21MB CTC(2025训练)；transducer 热词的 cjkchar 提分写法原生层解析失败被静默跳过，
+ *   离线人名同音字错误靠 PC 端 fuzzy_scan_text 拼音兜底（同音必中）
  */
 object OfflineStt {
 
-    private const val MODEL_DIR = "zipformer-zh-transducer"
+    private const val MODEL_DIR = "zipformer-zh-small-ctc"
     private const val SAMPLE_RATE = 16000
 
     @Volatile
@@ -35,19 +37,10 @@ object OfflineStt {
         recognizer?.let { return it }
         val config = OnlineRecognizerConfig(
             modelConfig = OnlineModelConfig(
-                transducer = OnlineTransducerModelConfig(
-                    encoder = "$MODEL_DIR/encoder.onnx",
-                    decoder = "$MODEL_DIR/decoder.onnx",
-                    joiner = "$MODEL_DIR/joiner.onnx",
-                ),
+                zipformer2Ctc = OnlineZipformer2CtcModelConfig(model = "$MODEL_DIR/model.int8.onnx"),
                 tokens = "$MODEL_DIR/tokens.txt",
-                modelType = "zipformer",
                 numThreads = 2,
-                modelingUnit = "cjkchar",
             ),
-            // 热词只认 modified_beam_search（greedy 会忽略热词）
-            decodingMethod = "modified_beam_search",
-            hotwordsScore = 3.0f,
         )
         val rec = OnlineRecognizer(ctx.assets, config)
         recognizer = rec
@@ -75,14 +68,13 @@ object OfflineStt {
 
     /**
      * 整段 wav（16k 单声道 16bit，AudioRecorder 产物）→ 文字。
-     * hotwords：热词串（联系人花名册，cjkchar 单元；空串=不用热词）。
      * 没听清返回空串；模型/文件异常抛异常。
      */
-    fun transcribeWav(ctx: Context, wav: File, hotwords: String = ""): String {
+    fun transcribeWav(ctx: Context, wav: File): String {
         val samples = readPcm16(wav)
         if (samples.size < SAMPLE_RATE / 10) return "" // 不足 0.1 秒视为空
         val rec = getRecognizer(ctx)
-        val stream = if (hotwords.isBlank()) rec.createStream() else rec.createStream(hotwords)
+        val stream = rec.createStream()
         try {
             stream.acceptWaveform(samples, SAMPLE_RATE)
             // 0.3 秒静音尾巴：把最后一个字冲出来
