@@ -1,6 +1,9 @@
 package com.luyuan.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,16 +12,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -34,15 +40,27 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.luyuan.domain.Note
+import com.luyuan.platform.StorageLocator
+import java.io.File
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
+
+private val EMOJI_PICKS = listOf(
+    "😊", "😂", "🥰", "😭", "😡", "😮", "😰", "🤢",
+    "💪", "🎉", "❤️", "🙏", "👍", "🔥", "🌙", "☕"
+)
 
 private fun journalParseDay(created: String): LocalDate? = try {
     OffsetDateTime.parse(created).toLocalDate()
@@ -50,7 +68,7 @@ private fun journalParseDay(created: String): LocalDate? = try {
     try { LocalDateTime.parse(created).toLocalDate() } catch (_: Exception) { null }
 }
 
-/** 负一屏 · 日记：一天一篇（tags=["日记"]，与 PC 端统一），键盘/语音都能写 */
+/** 负一屏 · 日记：一天一篇（tags=["日记"]，与 PC 端统一），键盘/语音/表情/配图 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
@@ -61,12 +79,11 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
     var showTime by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    var diaryText by remember { mutableStateOf("") }
+    var diaryValue by remember { mutableStateOf(TextFieldValue("")) }
     var dirty by remember { mutableStateOf(false) }
-    // 回到本页/同步完成后填充，正在打字时不覆盖
     LaunchedEffect(Unit) { vm.refresh() }
     LaunchedEffect(todayDiary) {
-        if (!dirty) diaryText = todayDiary?.text ?: ""
+        if (!dirty) diaryValue = TextFieldValue(todayDiary?.text ?: "")
     }
 
     val streak = remember(notes, todayDiary) {
@@ -74,7 +91,7 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
         for (n in notes) {
             if (n.tags.contains("日记")) journalParseDay(n.created_at)?.let { diaryDays.add(it) }
         }
-        todayDiary?.let { journalParseDay(it.created_at)?.let { d -> diaryDays.add(d) } }
+        todayDiary?.let { journalParseDay(it.created_at)?.let { d -> diaryDays.add(it) } }
         var s = 0
         var d = LocalDate.now()
         while (d in diaryDays) {
@@ -82,6 +99,18 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
             d = d.minusDays(1)
         }
         s
+    }
+
+    val pickImage = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri -> if (uri != null) vm.addDiaryImage(uri) }
+    var viewer by remember { mutableStateOf<String?>(null) }
+
+    fun insertEmoji(e: String) {
+        val s = diaryValue.selection.start.coerceIn(0, diaryValue.text.length)
+        val newText = diaryValue.text.substring(0, s) + e + diaryValue.text.substring(s)
+        diaryValue = TextFieldValue(newText, TextRange(s + e.length))
+        dirty = true
     }
 
     Scaffold(
@@ -106,26 +135,70 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
                         )
                     }
                     OutlinedTextField(
-                        value = diaryText,
-                        onValueChange = { diaryText = it; dirty = true },
+                        value = diaryValue,
+                        onValueChange = { diaryValue = it; dirty = true },
                         placeholder = { Text("今天想记录点什么？支持换行") },
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                         minLines = 4,
                         maxLines = 12
                     )
+                    // 表情快捷栏
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp)
+                            .horizontalScroll(rememberScrollState())
+                    ) {
+                        for (e in EMOJI_PICKS) {
+                            Text(
+                                e,
+                                fontSize = 22.sp,
+                                modifier = Modifier
+                                    .clickable { insertEmoji(e) }
+                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    // 配图（与 PC 端 images/ 共享）
+                    val imgs = todayDiary?.images ?: emptyList()
+                    if (imgs.isNotEmpty()) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                                .horizontalScroll(rememberScrollState())
+                        ) {
+                            for (rel in imgs) {
+                                AsyncImage(
+                                    model = File(StorageLocator.getRoot(context), rel),
+                                    contentDescription = "日记配图",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(84.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.surfaceVariant,
+                                            RoundedCornerShape(10.dp)
+                                        )
+                                        .clickable { viewer = rel }
+                                )
+                            }
+                        }
+                    }
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                     ) {
                         Button(
                             onClick = {
-                                vm.saveDiary(diaryText)
+                                vm.saveDiary(diaryValue.text)
                                 dirty = false
                             },
-                            enabled = dirty && diaryText.isNotBlank()
+                            enabled = dirty && diaryValue.text.isNotBlank()
                         ) { Text(if (todayDiary == null) "保存日记" else "更新日记") }
                         Text(
-                            if (todayDiary == null) "今天还没写" else "已有 ${todayDiary!!.text.length} 字，可继续修改",
+                            if (todayDiary == null) "今天还没写" else "已有 ${todayDiary!!.text.length} 字",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.weight(1f).padding(start = 10.dp)
@@ -140,12 +213,18 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
                             Text("🎤 说一段")
                         }
                     }
-                    Text(
-                        "一天一篇：语音说的会自动并入今天这篇；保存后同步到电脑端日记页",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+                    ) {
+                        Text(
+                            "📷 配图存进共享 images/ 目录，电脑端同步可见",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { pickImage.launch("image/*") }) { Text("＋ 配图") }
+                    }
                 }
             }
             Card(
@@ -194,6 +273,29 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
                 TextButton(onClick = { showTime = false }) { Text("取消") }
             },
             text = { TimePicker(state = timeState) }
+        )
+    }
+
+    viewer?.let { rel ->
+        val imgFile = File(StorageLocator.getRoot(context), rel)
+        AlertDialog(
+            onDismissRequest = { viewer = null },
+            title = { Text("配图", fontWeight = FontWeight.Bold) },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.removeDiaryImage(rel)
+                    viewer = null
+                }) { Text("删除") }
+            },
+            dismissButton = { TextButton(onClick = { viewer = null }) { Text("关闭") } },
+            text = {
+                AsyncImage(
+                    model = imgFile,
+                    contentDescription = "配图大图",
+                    contentScale = ContentScale.FillWidth,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         )
     }
 }

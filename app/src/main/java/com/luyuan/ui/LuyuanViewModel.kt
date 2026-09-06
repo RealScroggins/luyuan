@@ -242,10 +242,14 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
                 releaseRecognizer(sr)
                 _isRecording.value = false
                 _voiceError.value = when (error) {
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没听到说话"
-                    SpeechRecognizer.ERROR_NO_MATCH -> "没听清，再试一次"
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "需要麦克风权限"
-                    else -> "unavailable"
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没听到说话（错误码 $error）"
+                    SpeechRecognizer.ERROR_NO_MATCH -> "没听清，再试一次（错误码 $error）"
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "需要麦克风权限（错误码 $error）"
+                    else -> {
+                        // 本机没有可用的系统语音服务：记住，以后直接进键盘模式
+                        moodPrefs.edit().putString("voice_mode", "dictation").apply()
+                        "unavailable($error)"
+                    }
                 }
             }
 
@@ -267,7 +271,8 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         } catch (_: Exception) {
             releaseRecognizer(sr)
             _isRecording.value = false
-            _voiceError.value = "unavailable"
+            moodPrefs.edit().putString("voice_mode", "dictation").apply()
+            _voiceError.value = "unavailable(start)"
         }
     }
 
@@ -292,6 +297,33 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         } catch (_: Exception) {
         }
         if (speech === sr) speech = null
+    }
+
+    /** 初始语音模式（本机系统识别失败过就直接键盘模式） */
+    fun preferredSystemVoice(): Boolean =
+        moodPrefs.getString("voice_mode", "auto") != "dictation"
+
+    fun rememberVoiceMode(mode: String) {
+        moodPrefs.edit().putString("voice_mode", mode).apply()
+    }
+
+    /** 给今天日记加一张图（相册/相机），压缩后放共享 images/ 目录 */
+    fun addDiaryImage(uri: android.net.Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val rel = NoteRepository.importImage(ctx, uri) ?: return@launch
+            val imgs = (_todayDiary.value?.images ?: emptyList()) + rel
+            NoteRepository.setDiaryImages(ctx, imgs)
+            refresh()
+        }
+    }
+
+    /** 从今天日记移除一张配图（文件保留，仅去掉引用，与 PC 端行为一致） */
+    fun removeDiaryImage(rel: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val imgs = (_todayDiary.value?.images ?: emptyList()) - rel
+            NoteRepository.setDiaryImages(ctx, imgs)
+            refresh()
+        }
     }
 
     /** 识别完成 → 落库（普通笔记 / 并入今天日记） */

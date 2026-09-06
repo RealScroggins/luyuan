@@ -71,11 +71,17 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
     }
 
     val canSystem = remember { com.luyuan.platform.SystemSpeech.available(context) }
-    var mode by remember { mutableStateOf(if (canSystem) MODE_SYSTEM else MODE_DICTATION) }
+    var mode by remember {
+        mutableStateOf(
+            if (canSystem && vm.preferredSystemVoice()) MODE_SYSTEM else MODE_DICTATION
+        )
+    }
 
     // 系统识别不可用/报错 → 自动退到键盘兜底
     LaunchedEffect(voiceError) {
-        if (voiceError == "unavailable" && mode == MODE_SYSTEM) mode = MODE_DICTATION
+        if (voiceError?.startsWith("unavailable") == true && mode == MODE_SYSTEM) {
+            mode = MODE_DICTATION
+        }
     }
     // 键盘模式：自动聚焦并弹键盘
     val focusRequester = remember { FocusRequester() }
@@ -136,6 +142,7 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                 }
                 TextButton(onClick = {
                     vm.cancelRecording()
+                    vm.rememberVoiceMode("dictation")
                     mode = MODE_DICTATION
                 }) { Text("改用键盘输入") }
             } else {
@@ -148,9 +155,10 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                         prefilled = true
                     }
                 }
-                voiceError?.takeIf { it != "unavailable" }?.let {
+                voiceError?.let {
                     Text(
-                        "⚠️ $it",
+                        if (it.startsWith("unavailable")) "⚠️ 本机没有可用的系统语音服务（$it），已切到键盘输入——长按空格说话即可"
+                        else "⚠️ $it",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.fillMaxWidth()
@@ -182,6 +190,7 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                     ) { Text(if (diaryMode) "保存日记" else "保存笔记") }
                     TextButton(onClick = {
                         vm.cancelRecording()
+                        vm.rememberVoiceMode("auto")
                         mode = MODE_SYSTEM
                     }) { Text("改用语音识别") }
                     TextButton(onClick = onBack) { Text("完成") }

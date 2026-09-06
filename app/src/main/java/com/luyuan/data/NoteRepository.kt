@@ -58,6 +58,45 @@ object NoteRepository {
         }
     }
 
+    /** 设置今天日记的配图列表（相对路径 images/xxx.jpg） */
+    fun setDiaryImages(context: Context, images: List<String>) {
+        val existing = todayDiaryNote(context) ?: return
+        saveNote(context, existing.copy(images = images, updated_at = nowIso()))
+    }
+
+    /**
+     * 导入一张图（来自相册/相机）到共享目录 images/ 子文件夹，JPEG 压缩（最长边 1600、质量 85），
+     * 与 PC 端上传规格一致；返回相对路径，失败返回 null。
+     */
+    fun importImage(context: Context, uri: android.net.Uri): String? {
+        return try {
+            val dir = File(StorageLocator.getRoot(context), "images").also { it.mkdirs() }
+            val tmp = File(context.cacheDir, "import_${System.currentTimeMillis()}.tmp")
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                tmp.outputStream().use { input.copyTo(it) }
+            } ?: return null
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeFile(tmp.absolutePath, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                tmp.delete(); return null
+            }
+            var sample = 1
+            var maxDim = maxOf(bounds.outWidth, bounds.outHeight)
+            while (maxDim / sample > 1600) sample *= 2
+            val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+            val bmp = android.graphics.BitmapFactory.decodeFile(tmp.absolutePath, opts)
+            tmp.delete()
+            if (bmp == null) return null
+            val fname = UUID.randomUUID().toString().take(12) + ".jpg"
+            val out = File(dir, fname)
+            out.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, it) }
+            bmp.recycle()
+            "images/$fname"
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     /** 回收站：只看软删的 */
     fun listTrash(context: Context): List<Note> {
         return allDistinct(context).filter { it.deleted }.sortedByDescending { it.updated_at }
