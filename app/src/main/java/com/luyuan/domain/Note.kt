@@ -24,6 +24,8 @@ data class Note(
     val device: String = "",  // "pc" | "phone"
     val audio: String? = null,      // 相对路径 audio/<id>.wav
     val transcribed: Boolean? = null,
+    // 原始识别留底（PC 端 SenseVoice 三层纠错前的原稿；App 端详情页可对照查看）
+    val raw_text: String? = null,
     val deleted: Boolean = false,   // 软删标记
     // 日记配图（PC 端 2026-09-06 扩展）：相对路径 images/<id>.jpg，文件在共享目录 images/ 子文件夹
     val images: List<String> = emptyList(),

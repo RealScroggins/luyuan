@@ -53,6 +53,8 @@ fun DetailEditScreen(
     var tagsText by remember { mutableStateOf("") }
     var remindAt by remember { mutableStateOf<String?>(null) }
     var audioRel by remember { mutableStateOf<String?>(null) }
+    var rawText by remember { mutableStateOf<String?>(null) }
+    var showRaw by remember { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(false) }
     var showDelete by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
@@ -69,6 +71,7 @@ fun DetailEditScreen(
                 tagsText = it.tags.joinToString(", ")
                 remindAt = it.remind_at
                 audioRel = it.audio
+                rawText = it.raw_text
                 loaded = true
             }
         }
@@ -151,6 +154,22 @@ fun DetailEditScreen(
                         "🎙 这条带原声录音（音频还没同步到手机）",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // 原始识别留底：电脑纠错前的原稿，转写不准时可对照修正
+            rawText?.takeIf { it.isNotBlank() && it != text }?.let { raw ->
+                AssistChip(
+                    onClick = { showRaw = !showRaw },
+                    label = { Text(if (showRaw) "🙈 收起原始识别" else "📜 看原始识别") }
+                )
+                if (showRaw) {
+                    Text(
+                        raw,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
