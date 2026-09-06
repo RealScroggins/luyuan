@@ -52,6 +52,9 @@ fun DetailEditScreen(
     var remindAt by remember { mutableStateOf<String?>(null) }
     var loaded by remember { mutableStateOf(false) }
     var showDelete by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    var pickedDate by remember { mutableStateOf<java.time.LocalDate?>(null) }
 
     val isRecording by vm.isRecording.collectAsStateWithLifecycle()
 
@@ -125,19 +128,21 @@ fun DetailEditScreen(
                     vm.setReminder(noteId, iso)
                     remindAt = iso
                 }, label = { Text("明早9点") })
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AssistChip(onClick = {
-                    val iso = isoTomorrowAt(
-                        LocalDateTime.now().hour, LocalDateTime.now().minute
-                    )
+                    val now = LocalDateTime.now()
+                    val iso = isoTomorrowAt(now.hour, now.minute)
                     vm.setReminder(noteId, iso)
                     remindAt = iso
                 }, label = { Text("明天此时") })
-            }
-            if (remindAt != null) {
-                TextButton(onClick = {
-                    vm.setReminder(noteId, null)
-                    remindAt = null
-                }) { Text("取消提醒") }
+                AssistChip(onClick = { showDatePicker = true }, label = { Text("自定义时间…") })
+                if (remindAt != null) {
+                    AssistChip(onClick = {
+                        vm.setReminder(noteId, null)
+                        remindAt = null
+                    }, label = { Text("取消提醒") })
+                }
             }
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -166,6 +171,56 @@ fun DetailEditScreen(
             dismissButton = {
                 TextButton(onClick = { showDelete = false }) { Text("取消") }
             }
+        )
+    }
+
+    // 自定义提醒：日历选日期 → 拨盘选时间
+    if (showDatePicker) {
+        val dateState = androidx.compose.material3.rememberDatePickerState(
+            initialSelectedDateMillis = System.currentTimeMillis()
+        )
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    dateState.selectedDateMillis?.let { ms ->
+                        pickedDate = java.time.Instant.ofEpochMilli(ms)
+                            .atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                        showDatePicker = false
+                        showTimePicker = true
+                    }
+                }) { Text("下一步") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("取消") }
+            }
+        ) {
+            androidx.compose.material3.DatePicker(state = dateState)
+        }
+    }
+    if (showTimePicker) {
+        val timeState = androidx.compose.material3.rememberTimePickerState(
+            initialHour = 9, initialMinute = 0, is24Hour = true
+        )
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            title = { Text("选时间") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val d = pickedDate
+                    if (d != null) {
+                        val iso = d.atTime(timeState.hour, timeState.minute)
+                            .atOffset(OffsetDateTime.now().offset).toString()
+                        vm.setReminder(noteId, iso)
+                        remindAt = iso
+                    }
+                    showTimePicker = false
+                }) { Text("确定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) { Text("取消") }
+            },
+            text = { androidx.compose.material3.TimePicker(state = timeState) }
         )
     }
 }

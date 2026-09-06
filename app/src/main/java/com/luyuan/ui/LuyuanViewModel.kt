@@ -89,8 +89,8 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 手动触发/重试加载语音模型（首次点录音或失败后调用） */
-    private fun ensureStt() {
+    /** 手动触发/重试加载语音模型（首次点录音、下载失败后点状态文字重试） */
+    fun retryStt() {
         if (_sttReady.value) return
         viewModelScope.launch(Dispatchers.IO) {
             _sttMessage.value = "正在下载语音模型…"
@@ -157,7 +157,7 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     fun startRecording() {
         if (_isRecording.value) return
         _liveText.value = ""
-        ensureStt()
+        retryStt()
         recognizer = if (_sttReady.value) SttEngine.createRecognizer() else null
         val id = UUID.randomUUID().toString()
         val wav = File(StorageLocator.audioDir(ctx), "$id.wav")

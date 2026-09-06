@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">路远</string>
+    <string name="volume_service_desc">路远·双击音量下键直接开始录音（实验性功能，不读取屏幕内容）</string>
 </resources>

@@ -161,9 +161,41 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                 }) { Text("去开启所有文件访问") }
             }
 
+            // 实验性：双击音量下键直接录音（无障碍服务全局监听，不需要 adb）
+            val volumeServiceOn = remember {
+                android.provider.Settings.Secure.getString(
+                    context.contentResolver,
+                    android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                )?.contains("VolumeKeyService") == true
+            }
+            val overlayOn = remember {
+                android.provider.Settings.canDrawOverlays(context)
+            }
+            Text("实体键快捷（实验性）", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "双击音量下键 = 直接开始录音。需开启两处：①无障碍里的「路远·双击音量下键录音」（状态：${if (volumeServiceOn) "已开启" else "未开启"}）；②「显示在其他应用上层」（状态：${if (overlayOn) "已授权" else "未授权"}）。不拦截音量本身，双击时音量也会正常降低。若被 vivo 后台清理，请在管家里允许路远自启动并锁定后台。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    context.startActivity(
+                        android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    )
+                }) { Text("去开无障碍") }
+                Button(onClick = {
+                    context.startActivity(
+                        android.content.Intent(
+                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            android.net.Uri.parse("package:com.luyuan")
+                        )
+                    )
+                }) { Text("去开悬浮层") }
+            }
+
             Text("关于", style = MaterialTheme.typography.titleMedium)
             Text(
-                "路远 安卓 App v0.5 · 去中心化本地记事\n数据按 SYNC_FORMAT 与电脑端双向同步（Syncthing）。",
+                "路远 安卓 App v0.6 · 去中心化本地记事\n数据按 SYNC_FORMAT 与电脑端双向同步（Syncthing）。",
                 style = MaterialTheme.typography.labelSmall
             )
         }

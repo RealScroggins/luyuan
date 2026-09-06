@@ -108,6 +108,8 @@ private class PullRefreshConnection(
         if (overPull >= thresholdPx) {
             overPull = thresholdPx // 触发后停在标准位置，刷新完成由 refreshDone 收回
             onRefresh()
+        } else {
+            overPull = 0f // 没拉到阈值也立刻弹回，不用手动收
         }
         return Velocity.Zero
     }
@@ -385,12 +387,14 @@ fun NoteListScreen(
                         sttReady -> "🎤 语音转写已就绪"
                         downloadPct in 0..99 -> "🎤 语音模型下载中 $downloadPct%"
                         downloadPct == 100 -> "🎤 语音模型解压中…"
-                        sttMessage.isNotBlank() -> "🎤 $sttMessage"
+                        sttMessage.isNotBlank() -> "🎤 $sttMessage（点此重试）"
                         else -> "🎤 语音模型加载中…"
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .clickable { vm.retryStt() }
                 )
                 if (refreshing) {
                     Text(

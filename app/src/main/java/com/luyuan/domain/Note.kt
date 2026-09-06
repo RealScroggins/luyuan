@@ -18,8 +18,10 @@ data class Note(
     val updated_at: String = "",
     val text: String,
     val source: String,            // "manual" | "voice"
+    // 设备标记：默认空串。App 自建笔记显式传 "phone"；电脑老笔记缺此字段时
+    // 由 NoteRepository.readNote 兜底为 "pc"（默认值绝不能写 "phone"，否则电脑笔记全被误标）
     val tags: List<String> = emptyList(),
-    val device: String = "phone",  // "pc" | "phone"
+    val device: String = "",  // "pc" | "phone"
     val audio: String? = null,      // 相对路径 audio/<id>.wav
     val transcribed: Boolean? = null,
     val deleted: Boolean = false,   // 软删标记
