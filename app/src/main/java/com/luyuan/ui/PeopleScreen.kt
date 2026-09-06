@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /** 第二屏 · 人际：等 PC 端把 SYNC_FORMAT v2（kind:"contact"）契约落地后填充。
  *  数据流：主页说「向文成的生日是10月20日」→ 电脑端本地大模型抽取 → 写联系人 JSON →
