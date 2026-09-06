@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
 import android.service.quicksettings.TileService
+import com.luyuan.MainActivity
 
 /**
  * 下拉通知栏快捷磁贴「路远录音」：点一下直接进录音页开录。

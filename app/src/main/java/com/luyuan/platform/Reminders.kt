@@ -11,7 +11,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.luyuan.MainActivity
 import com.luyuan.R
-import com.luyuan.data.Note
+import com.luyuan.domain.Note
 import com.luyuan.data.NoteRepository
 
 /** 系统通知：提醒用高优先级渠道，点了跳进 App */
