@@ -88,7 +88,7 @@ fun AppRoot(startDest: String) {
                     val tabs = listOf(
                         Triple("list", "记事", Icons.AutoMirrored.Filled.Notes),
                         Triple("journal", "日记", Icons.Default.EditNote),
-                        Triple("people", "人际", Icons.Default.People)
+                        Triple("people", "人脉", Icons.Default.People)
                     )
                     for ((route, label, icon) in tabs) {
                         NavigationBarItem(

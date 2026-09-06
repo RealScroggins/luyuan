@@ -206,7 +206,7 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
 
             Text("关于", style = MaterialTheme.typography.titleMedium)
             Text(
-                "路远 安卓 App v0.8 · 去中心化本地记事\n数据按 SYNC_FORMAT 与电脑端双向同步（Syncthing）。",
+                "路远 安卓 App v0.9 · 去中心化本地记事\n数据按 SYNC_FORMAT 与电脑端双向同步（Syncthing）。\n联系人来自共享目录 contacts/，勾选待办会写回并同步电脑。",
                 style = MaterialTheme.typography.labelSmall
             )
         }

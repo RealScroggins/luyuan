@@ -6,6 +6,8 @@ import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.luyuan.data.AudioRecorder
+import com.luyuan.data.Contact
+import com.luyuan.data.ContactRepository
 import com.luyuan.data.NoteRepository
 import com.luyuan.data.SttEngine
 import com.luyuan.domain.Note
@@ -31,6 +33,10 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     /** 今天的日记（日记页编辑/语音归档用；主列表不含日记） */
     private val _todayDiary = MutableStateFlow<Note?>(null)
     val todayDiary: StateFlow<Note?> = _todayDiary
+
+    /** 联系人（contacts/ 目录，与 PC 端人脉页互通） */
+    private val _contacts = MutableStateFlow<List<Contact>>(emptyList())
+    val contacts: StateFlow<List<Contact>> = _contacts
 
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing
@@ -132,8 +138,17 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             _notes.value = NoteRepository.listNotes(ctx)
             _todayDiary.value = NoteRepository.todayDiaryNote(ctx)
+            _contacts.value = ContactRepository.listContacts(ctx)
             _refreshing.value = false
             _refreshDone.value += 1
+        }
+    }
+
+    /** 勾/取消联系人待办（写回文件，同步回电脑） */
+    fun toggleContactTodo(contactId: String, todoId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            ContactRepository.toggleTodo(ctx, contactId, todoId)
+            _contacts.value = ContactRepository.listContacts(ctx)
         }
     }
 

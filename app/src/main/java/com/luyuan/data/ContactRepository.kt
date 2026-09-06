@@ -1,0 +1,94 @@
+package com.luyuan.data
+
+import android.content.Context
+import com.luyuan.platform.StorageLocator
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import java.io.File
+import java.text.Collator
+import java.util.Locale
+
+/**
+ * 联系人（PC 端人脉页写入 contacts/ 子目录，随 Syncthing 双向同步）。
+ * 文件名约定：字母_姓名.json（如 X_谢凤林.json）；App 端只按 id 读写，原文件名原地覆盖。
+ */
+@Serializable
+data class ContactTodo(
+    val id: String,
+    val text: String,
+    val done: Boolean = false,
+    val created_at: String = ""
+)
+
+@Serializable
+data class Contact(
+    val id: String,
+    val name: String,
+    val letter: String = "",
+    val phone: String = "",
+    val wechat: String = "",
+    val qq: String = "",
+    val birthday: String = "",
+    val info: List<String> = emptyList(),
+    val todos: List<ContactTodo> = emptyList(),
+    val created_at: String = "",
+    val updated_at: String = ""
+) {
+    val undoneTodos: List<ContactTodo> get() = todos.filter { !it.done }
+}
+
+val contactJson: Json = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+    explicitNulls = false
+    prettyPrint = true
+}
+
+object ContactRepository {
+
+    fun contactsDir(context: Context): File =
+        File(StorageLocator.getRoot(context), "contacts").also { it.mkdirs() }
+
+    /** 全部联系人，按字母分组排序（字母取 PC 写入的 letter，缺省归入 #） */
+    fun listContacts(context: Context): List<Contact> {
+        val dir = contactsDir(context)
+        val out = mutableListOf<Contact>()
+        for (f in dir.listFiles() ?: emptyArray()) {
+            if (!f.isFile || !f.name.endsWith(".json", true)) continue
+            try {
+                out.add(contactJson.decodeFromString(Contact.serializer(), f.readText(Charsets.UTF_8)))
+            } catch (_: Exception) {
+                // 跳过坏文件（如 .sync-conflict 残片）
+            }
+        }
+        val collator = Collator.getInstance(Locale.CHINA)
+        return out.sortedWith(
+            compareBy({ it.letter.ifBlank { "#" } }, { collator.getCollationKey(it.name) })
+        )
+    }
+
+    private fun findFile(context: Context, contactId: String): Pair<File, Contact>? {
+        val dir = contactsDir(context)
+        for (f in dir.listFiles() ?: emptyArray()) {
+            if (!f.isFile || !f.name.endsWith(".json", true)) continue
+            try {
+                val c = contactJson.decodeFromString(Contact.serializer(), f.readText(Charsets.UTF_8))
+                if (c.id == contactId) return f to c
+            } catch (_: Exception) {
+            }
+        }
+        return null
+    }
+
+    /** 勾/取消勾选一条联系人待办，原地写回文件（同步回 PC） */
+    fun toggleTodo(context: Context, contactId: String, todoId: String) {
+        val (file, c) = findFile(context, contactId) ?: return
+        val updated = c.copy(
+            todos = c.todos.map {
+                if (it.id == todoId) it.copy(done = !it.done) else it
+            },
+            updated_at = NoteRepository.nowIso()
+        )
+        file.writeText(contactJson.encodeToString(Contact.serializer(), updated), Charsets.UTF_8)
+    }
+}

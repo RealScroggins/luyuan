@@ -12,8 +12,8 @@ android {
         applicationId = "com.luyuan"
         minSdk = 24
         targetSdk = 34
-        versionCode = 8
-        versionName = "0.8.0"
+        versionCode = 9
+        versionName = "0.9.0"
     }
 
     signingConfigs {
