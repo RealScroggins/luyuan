@@ -93,15 +93,28 @@ object SttEngine {
         return null
     }
 
-    /** Download 目录里用户拷入的模型 zip（标准名优先，其次任意含 vosk 的 zip） */
+    /** 模型 zip：优先共享目录 model/（电脑放进去随 Syncthing 同步，免数据线），其次 Download */
     private fun findImportedZip(context: Context): File? {
+        val MIN = 20_000_000L // 20MB 以下视为不完整文件，不认
+        // ① 共享目录 model/
+        val sharedModel = File(com.luyuan.platform.StorageLocator.getRoot(context), "model")
+        if (sharedModel.isDirectory) {
+            File(sharedModel, "vosk-model-small-cn-0.22.zip").takeIf {
+                it.exists() && it.length() >= MIN
+            }?.let { return it }
+            sharedModel.listFiles()
+                ?.filter { it.isFile && it.name.endsWith(".zip", true) && it.name.contains("vosk", true) && it.length() >= MIN }
+                ?.maxByOrNull { it.length() }
+                ?.let { return it }
+        }
+        // ② Download 目录
         val dl = android.os.Environment.getExternalStoragePublicDirectory(
             android.os.Environment.DIRECTORY_DOWNLOADS
         )
         if (!dl.isDirectory) return null
-        File(dl, "vosk-model-small-cn-0.22.zip").takeIf { it.exists() }?.let { return it }
+        File(dl, "vosk-model-small-cn-0.22.zip").takeIf { it.exists() && it.length() >= MIN }?.let { return it }
         return dl.listFiles()
-            ?.filter { it.isFile && it.name.endsWith(".zip", true) && it.name.contains("vosk", true) }
+            ?.filter { it.isFile && it.name.endsWith(".zip", true) && it.name.contains("vosk", true) && it.length() >= MIN }
             ?.maxByOrNull { it.length() }
     }
 

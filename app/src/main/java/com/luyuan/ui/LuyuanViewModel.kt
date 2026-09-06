@@ -28,6 +28,10 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     private val _notes = MutableStateFlow<List<Note>>(emptyList())
     val notes: StateFlow<List<Note>> = _notes
 
+    /** 今天的日记（日记页编辑/语音归档用；主列表不含日记） */
+    private val _todayDiary = MutableStateFlow<Note?>(null)
+    val todayDiary: StateFlow<Note?> = _todayDiary
+
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing
 
@@ -60,6 +64,8 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     private var recognizer: Recognizer? = null
     private var currentNoteId: String? = null
     private var currentAudioRel: String? = null
+    /** 本次录音是否归入今天的日记（日记页的 🎤） */
+    private var currentDiary = false
 
     init {
         refresh()
@@ -125,8 +131,19 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         _refreshing.value = true
         viewModelScope.launch(Dispatchers.IO) {
             _notes.value = NoteRepository.listNotes(ctx)
+            _todayDiary.value = NoteRepository.todayDiaryNote(ctx)
             _refreshing.value = false
             _refreshDone.value += 1
+        }
+    }
+
+    /** 保存今天的日记（键盘输入） */
+    fun saveDiary(text: String) {
+        val t = text.trim()
+        if (t.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            NoteRepository.saveDiary(ctx, t)
+            refresh()
         }
     }
 
@@ -174,9 +191,10 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun startRecording() {
+    fun startRecording(diary: Boolean = false) {
         if (_isRecording.value) return
         _liveText.value = ""
+        currentDiary = diary
         retryStt()
         recognizer = if (_sttReady.value) SttEngine.createRecognizer() else null
         val id = UUID.randomUUID().toString()
@@ -217,25 +235,56 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         val text = finalText.ifBlank { _liveText.value }
         val noteId = currentNoteId
         val audioRel = currentAudioRel
+        val wasDiary = currentDiary
         currentNoteId = null
         currentAudioRel = null
+        currentDiary = false
 
         viewModelScope.launch(Dispatchers.IO) {
             if (text.isNotBlank() && noteId != null) {
-                val now = NoteRepository.nowIso()
-                val note = Note(
-                    id = noteId,
-                    created_at = now,
-                    updated_at = now,
-                    text = text,
-                    source = "voice",
-                    tags = emptyList(),
-                    device = "phone",
-                    audio = audioRel,
-                    transcribed = true,
-                    schema = 1
-                )
-                NoteRepository.saveNote(ctx, note)
+                if (wasDiary) {
+                    // 语音日记：并入今天那篇（已有则追加，没有则新建带「日记」标签的）
+                    val existing = NoteRepository.todayDiaryNote(ctx)
+                    if (existing != null) {
+                        NoteRepository.updateNote(
+                            ctx, existing.id,
+                            text = (existing.text + "\n" + text).trim(),
+                            tags = existing.tags
+                        )
+                    } else {
+                        val now = NoteRepository.nowIso()
+                        NoteRepository.saveNote(
+                            ctx,
+                            Note(
+                                id = noteId,
+                                created_at = now,
+                                updated_at = now,
+                                text = text,
+                                source = "voice",
+                                tags = listOf("日记"),
+                                device = "phone",
+                                audio = audioRel,
+                                transcribed = true,
+                                schema = 1
+                            )
+                        )
+                    }
+                } else {
+                    val now = NoteRepository.nowIso()
+                    val note = Note(
+                        id = noteId,
+                        created_at = now,
+                        updated_at = now,
+                        text = text,
+                        source = "voice",
+                        tags = emptyList(),
+                        device = "phone",
+                        audio = audioRel,
+                        transcribed = true,
+                        schema = 1
+                    )
+                    NoteRepository.saveNote(ctx, note)
+                }
             }
             refresh()
         }

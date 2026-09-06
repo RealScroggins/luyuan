@@ -6,13 +6,19 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -21,15 +27,16 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.luyuan.domain.Note
 import java.time.LocalDate
@@ -42,24 +49,34 @@ private fun journalParseDay(created: String): LocalDate? = try {
     try { LocalDateTime.parse(created).toLocalDate() } catch (_: Exception) { null }
 }
 
-/** 负一屏 · 日记：今天记了几条 + 一键开录 + 每天固定时间提醒 */
+/** 负一屏 · 日记：一天一篇（tags=["日记"]，与 PC 端统一），键盘/语音都能写 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
     val notes by vm.notes.collectAsStateWithLifecycle()
+    val todayDiary by vm.todayDiary.collectAsStateWithLifecycle()
     val enabled by vm.journalEnabled.collectAsStateWithLifecycle()
     val time by vm.journalTime.collectAsStateWithLifecycle()
     var showTime by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
-    val todayCount = remember(notes) {
-        val today = LocalDate.now()
-        notes.count { journalParseDay(it.created_at) == today }
+    var diaryText by remember { mutableStateOf("") }
+    var dirty by remember { mutableStateOf(false) }
+    // 回到本页/同步完成后填充，正在打字时不覆盖
+    LaunchedEffect(Unit) { vm.refresh() }
+    LaunchedEffect(todayDiary) {
+        if (!dirty) diaryText = todayDiary?.text ?: ""
     }
-    val streak = remember(notes) {
+
+    val streak = remember(notes, todayDiary) {
+        val diaryDays = mutableSetOf<LocalDate>()
+        for (n in notes) {
+            if (n.tags.contains("日记")) journalParseDay(n.created_at)?.let { diaryDays.add(it) }
+        }
+        todayDiary?.let { journalParseDay(it.created_at)?.let { d -> diaryDays.add(d) } }
         var s = 0
         var d = LocalDate.now()
-        val days = notes.mapNotNull { journalParseDay(it.created_at) }.toSet()
-        while (d in days) {
+        while (d in diaryDays) {
             s++
             d = d.minusDays(1)
         }
@@ -78,27 +95,55 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    Text("今天", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
-                    Text(
-                        if (todayCount > 0) "已记 $todayCount 条" else "还没记，说两句？",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("今天", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                        Text(
+                            if (streak > 0) "🔥 连续 $streak 天" else "从今天开始",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    OutlinedTextField(
+                        value = diaryText,
+                        onValueChange = { diaryText = it; dirty = true },
+                        placeholder = { Text("今天想记录点什么？支持换行") },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        minLines = 4,
+                        maxLines = 12
                     )
-                    Button(onClick = onRecord) { Text("🎤 记今天一笔") }
-                }
-            }
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    Text("连续记录", fontWeight = FontWeight.Bold)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                vm.saveDiary(diaryText)
+                                dirty = false
+                            },
+                            enabled = dirty && diaryText.isNotBlank()
+                        ) { Text(if (todayDiary == null) "保存日记" else "更新日记") }
+                        Text(
+                            if (todayDiary == null) "今天还没写" else "已有 ${todayDiary!!.text.length} 字，可继续修改",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f).padding(start = 10.dp)
+                        )
+                        Button(
+                            onClick = {
+                                vm.startRecording(diary = true)
+                                onRecord()
+                            },
+                            modifier = Modifier.size(width = 96.dp, height = 40.dp)
+                        ) {
+                            Text("🎤 说一段")
+                        }
+                    }
                     Text(
-                        if (streak > 0) "🔥 已连续 $streak 天" else "从今天开始连续记录吧",
+                        "一天一篇：语音说的会自动并入今天这篇；保存后同步到电脑端日记页",
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp)
+                        modifier = Modifier.padding(top = 6.dp)
                     )
                 }
             }

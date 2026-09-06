@@ -5,6 +5,7 @@ import com.luyuan.domain.Note
 import com.luyuan.domain.SyncPolicy
 import com.luyuan.platform.StorageLocator
 import java.io.File
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
@@ -17,7 +18,44 @@ import java.util.UUID
 object NoteRepository {
 
     fun listNotes(context: Context): List<Note> {
-        return allDistinct(context).filter { !it.deleted }.sortedByDescending { it.created_at }
+        // 主列表排除日记（带「日记」标签的），日记在日记页单独管理（与 PC 端一致）
+        return allDistinct(context).filter { !it.deleted && "日记" !in it.tags }
+            .sortedByDescending { it.created_at }
+    }
+
+    // ---------- 日记（tags=["日记"]，一天一篇，与 PC 端三页系统对齐） ----------
+
+    /** 今天的日记（没有则 null） */
+    fun todayDiaryNote(context: Context): Note? {
+        val today = LocalDate.now().toString()
+        return allDistinct(context)
+            .filter { !it.deleted && it.tags.contains("日记") && it.created_at.length >= 10 && it.created_at.substring(0, 10) == today }
+            .maxByOrNull { it.created_at }
+    }
+
+    /** 保存今天的日记：存在则更新，不存在则新建（source=manual, device=phone） */
+    fun saveDiary(context: Context, text: String) {
+        val t = text.trim()
+        if (t.isEmpty()) return
+        val existing = todayDiaryNote(context)
+        if (existing != null) {
+            saveNote(context, existing.copy(text = t, updated_at = nowIso()))
+        } else {
+            val now = nowIso()
+            saveNote(
+                context,
+                Note(
+                    id = UUID.randomUUID().toString(),
+                    created_at = now,
+                    updated_at = now,
+                    text = t,
+                    source = "manual",
+                    tags = listOf("日记"),
+                    device = SyncPolicy.DEVICE_PHONE,
+                    schema = SyncPolicy.SCHEMA_VERSION
+                )
+            )
+        }
     }
 
     /** 回收站：只看软删的 */
