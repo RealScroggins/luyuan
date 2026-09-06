@@ -533,8 +533,18 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             val now = NoteRepository.nowIso()
             val wav = java.io.File(StorageLocator.audioDir(ctx), "$id.wav")
+            // 花名册热词：每个名字按 cjkchar 单元拆字 + 提升分，让同音人名按名单写法出字
+            val hotwords = try {
+                ContactRepository.listContacts(ctx)
+                    .map { it.name }
+                    .filter { it.length >= 2 }
+                    .joinToString(" ") { n -> n.toCharArray().joinToString(" ") + ":3.0" }
+                    .take(6000)
+            } catch (_: Exception) {
+                ""
+            }
             val text = try {
-                com.luyuan.data.OfflineStt.transcribeWav(ctx, wav)
+                com.luyuan.data.OfflineStt.transcribeWav(ctx, wav, hotwords)
             } catch (t: Throwable) {
                 // 必须兜 Throwable：JNI 库缺失/ABI 不符抛 UnsatisfiedLinkError（Error 家族），
                 // 只接 Exception 会在离线模式闪退而不是退回录音待转写
