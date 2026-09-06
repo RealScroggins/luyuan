@@ -25,6 +25,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -41,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -91,7 +93,7 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
         for (n in notes) {
             if (n.tags.contains("日记")) journalParseDay(n.created_at)?.let { diaryDays.add(it) }
         }
-        todayDiary?.let { journalParseDay(it.created_at)?.let { d -> diaryDays.add(it) } }
+        todayDiary?.let { td -> journalParseDay(td.created_at)?.let { d -> diaryDays.add(d) } }
         var s = 0
         var d = LocalDate.now()
         while (d in diaryDays) {
