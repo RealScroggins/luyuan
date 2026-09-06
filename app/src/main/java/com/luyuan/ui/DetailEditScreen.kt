@@ -22,11 +22,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -50,6 +52,7 @@ fun DetailEditScreen(
     var text by remember { mutableStateOf("") }
     var tagsText by remember { mutableStateOf("") }
     var remindAt by remember { mutableStateOf<String?>(null) }
+    var audioRel by remember { mutableStateOf<String?>(null) }
     var loaded by remember { mutableStateOf(false) }
     var showDelete by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
@@ -65,6 +68,7 @@ fun DetailEditScreen(
                 text = it.text
                 tagsText = it.tags.joinToString(", ")
                 remindAt = it.remind_at
+                audioRel = it.audio
                 loaded = true
             }
         }
@@ -98,6 +102,59 @@ fun DetailEditScreen(
                 modifier = Modifier.fillMaxWidth().fillMaxHeight(0.68f),
                 singleLine = false
             )
+
+            // 原声回放：录音待转写/离线识别的笔记可直接听（audio/<id>.wav 在共享目录）
+            audioRel?.let { rel ->
+                val f = remember(rel) {
+                    java.io.File(com.luyuan.platform.StorageLocator.getRoot(context), rel)
+                }
+                if (f.exists()) {
+                    var playing by remember(rel) { mutableStateOf(false) }
+                    val player = remember(rel) {
+                        android.media.MediaPlayer().apply {
+                            setOnCompletionListener { playing = false }
+                        }
+                    }
+                    DisposableEffect(rel) {
+                        onDispose {
+                            try { if (player.isPlaying) player.stop() } catch (_: Exception) {}
+                            try { player.release() } catch (_: Exception) {}
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        AssistChip(
+                            onClick = {
+                                try {
+                                    if (playing) {
+                                        player.pause()
+                                        playing = false
+                                    } else {
+                                        if (player.isPlaying) {
+                                            player.start()
+                                        } else {
+                                            player.reset()
+                                            player.setDataSource(f.absolutePath)
+                                            player.prepare()
+                                            player.start()
+                                        }
+                                        playing = true
+                                    }
+                                } catch (_: Exception) {
+                                    playing = false
+                                }
+                            },
+                            label = { Text(if (playing) "⏸ 暂停原声" else "▶ 播放原声") }
+                        )
+                    }
+                } else {
+                    Text(
+                        "🎙 这条带原声录音（音频还没同步到手机）",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
             OutlinedTextField(
                 value = tagsText,
                 onValueChange = { tagsText = it },
