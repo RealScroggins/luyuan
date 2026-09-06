@@ -90,7 +90,10 @@ fun PeopleScreen(vm: LuyuanViewModel) {
             )
             if (filtered.isEmpty()) {
                 Text(
-                    if (contacts.isEmpty()) "还没有联系人。\n电脑端人脉页添加后会自动同步到这里（共享目录 contacts/ 文件夹）。",
+                    if (contacts.isEmpty())
+                        "还没有联系人。\n电脑端人脉页添加后会自动同步到这里（共享目录 contacts/ 文件夹）。"
+                    else
+                        "没有匹配「${query.trim()}」的联系人",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(30.dp)
                 )

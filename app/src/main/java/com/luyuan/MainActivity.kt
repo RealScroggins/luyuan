@@ -128,7 +128,7 @@ fun AppRoot(startDest: String) {
                 JournalScreen(vm = vm, onRecord = { nav.navigate("record") })
             }
             composable("people") {
-                PeopleScreen()
+                PeopleScreen(vm = vm)
             }
             composable("record") {
                 RecordScreen(vm = vm, onBack = { nav.popBackStack() })
