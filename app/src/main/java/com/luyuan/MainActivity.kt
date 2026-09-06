@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.luyuan.platform.CrashLogger.install(this)
         autoRoute = routeFromIntent(intent)
         setContent {
             LuyuanTheme {

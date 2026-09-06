@@ -241,7 +241,10 @@ fun PeopleScreen(vm: LuyuanViewModel) {
                                             if (l == letter) break
                                             headerIdx += 1 + list.size
                                         }
-                                        scope.launch { listState.scrollToItem(headerIdx) }
+                                        scope.launch {
+                                            val max = (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
+                                            listState.scrollToItem(headerIdx.coerceIn(0, max))
+                                        }
                                     }
                                     .padding(vertical = 1.dp, horizontal = 4.dp)
                             )

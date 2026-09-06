@@ -49,22 +49,29 @@ object ContactRepository {
     fun contactsDir(context: Context): File =
         File(StorageLocator.getRoot(context), "contacts").also { it.mkdirs() }
 
-    /** 全部联系人，按字母分组排序（字母取 PC 写入的 letter，缺省归入 #） */
+    /** 全部联系人，按字母分组排序（字母取 PC 写入的 letter，缺省归入 #）。
+     *  跳过 .sync-conflict 冲突副本；同 id 去重取 updated_at 最新（防 LazyColumn 重复 key 闪退）。 */
     fun listContacts(context: Context): List<Contact> {
-        val dir = contactsDir(context)
-        val out = mutableListOf<Contact>()
-        for (f in dir.listFiles() ?: emptyArray()) {
-            if (!f.isFile || !f.name.endsWith(".json", true)) continue
-            try {
-                out.add(contactJson.decodeFromString(Contact.serializer(), f.readText(Charsets.UTF_8)))
-            } catch (_: Exception) {
-                // 跳过坏文件（如 .sync-conflict 残片）
+        return try {
+            val dir = contactsDir(context)
+            val out = mutableListOf<Contact>()
+            for (f in dir.listFiles() ?: emptyArray()) {
+                if (!f.isFile || !f.name.endsWith(".json", true)) continue
+                if (f.name.contains(".sync-conflict")) continue
+                try {
+                    out.add(contactJson.decodeFromString(Contact.serializer(), f.readText(Charsets.UTF_8)))
+                } catch (_: Exception) {
+                    // 跳过坏文件
+                }
             }
+            val dedup = out.sortedByDescending { it.updated_at }.distinctBy { it.id }
+            val collator = Collator.getInstance(Locale.CHINA)
+            dedup.sortedWith(
+                compareBy({ it.letter.ifBlank { "#" } }, { collator.getCollationKey(it.name) })
+            )
+        } catch (_: Exception) {
+            emptyList()
         }
-        val collator = Collator.getInstance(Locale.CHINA)
-        return out.sortedWith(
-            compareBy({ it.letter.ifBlank { "#" } }, { collator.getCollationKey(it.name) })
-        )
     }
 
     private fun findFile(context: Context, contactId: String): Pair<File, Contact>? {
