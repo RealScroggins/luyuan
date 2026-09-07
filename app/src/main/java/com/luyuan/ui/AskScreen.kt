@@ -68,7 +68,7 @@ import kotlinx.coroutines.withContext
  * 问路远（类 Chatbox 对话页）：
  * - 顶部模型选择器：官方模型目录（快答/深思/视觉/Pro），思考开关与视觉能力一目了然
  * - 图片通道：选图自动压缩成 base64（data URL），仅视觉模型可发
- * - 上下文 = 本机笔记 + 待办（私密不外发）；会话只在内存
+ * - 上下文 = 本机笔记 + 待办（私密不外发）；会话历史存本机私有目录，退出 App 不丢
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,7 +77,9 @@ fun AskScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
-    val messages = remember { mutableStateListOf<AskRemote.Turn>() }
+    val messages = remember {
+        mutableStateListOf<AskRemote.Turn>().apply { addAll(AskRemote.loadHistory(context)) }
+    }
     var modelKey by remember { mutableStateOf(AskRemote.loadConfig(context).modelKey) }
     var model by remember { mutableStateOf(AskRemote.modelByKey(modelKey)) }
     var showModelDialog by remember { mutableStateOf(false) }
@@ -132,6 +134,7 @@ fun AskScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
+            AskRemote.saveHistory(context, messages.toList())
             listState.animateScrollToItem(messages.size - 1)
         }
     }
@@ -148,6 +151,7 @@ fun AskScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                 actions = {
                     IconButton(onClick = {
                         messages.clear()
+                        AskRemote.clearHistory(context)
                         error = null
                     }) {
                         Text("新对话", fontSize = 13.sp)

@@ -9,6 +9,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -86,6 +87,46 @@ object AskRemote {
     fun saveModelKey(context: Context, modelKey: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString("model_key", modelKey).apply()
+    }
+
+    // ---- 会话历史持久化（v1.10.0）：App 私有 filesDir，不进同步目录（隐私红线同 §4.2） ----
+    private const val HISTORY_FILE = "ask_history.json"
+    private const val MAX_HISTORY_TURNS = 60
+
+    fun loadHistory(context: Context): MutableList<Turn> = try {
+        val f = File(context.filesDir, HISTORY_FILE)
+        if (!f.exists()) mutableListOf()
+        else Json.parseToJsonElement(f.readText()).jsonArray.map { el ->
+            val o = el.jsonObject
+            Turn(
+                o["role"]?.jsonPrimitive?.content ?: "user",
+                o["content"]?.jsonPrimitive?.content ?: ""
+            )
+        }.filter { it.content.isNotBlank() }.toMutableList()
+    } catch (_: Exception) {
+        mutableListOf()
+    }
+
+    fun saveHistory(context: Context, history: List<Turn>) {
+        try {
+            val arr = buildJsonArray {
+                for (t in history.takeLast(MAX_HISTORY_TURNS)) {
+                    add(buildJsonObject {
+                        put("role", t.role)
+                        put("content", t.content)
+                    })
+                }
+            }
+            File(context.filesDir, HISTORY_FILE).writeText(arr.toString())
+        } catch (_: Exception) {
+        }
+    }
+
+    fun clearHistory(context: Context) {
+        try {
+            File(context.filesDir, HISTORY_FILE).delete()
+        } catch (_: Exception) {
+        }
     }
 
     /** 本机上下文：今日待办摘要 + 近期笔记摘录（排除私密）。超长截断，控 token。 */
