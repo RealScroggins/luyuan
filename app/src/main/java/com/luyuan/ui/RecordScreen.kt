@@ -5,8 +5,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,10 +20,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,28 +32,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.luyuan.platform.PermissionHelper
 import kotlinx.coroutines.delay
 
-private const val MODE_SYSTEM = 0
 private const val MODE_RECORD = 1
-private const val MODE_DICTATION = 2
 private const val MODE_OFFLINE = 3
 
-/** 语音记事页：即时识别（系统引擎）/ 录音待转写（回电脑 SenseVoice）/ 键盘输入 / 离线识别（实验） 四模式 */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+/** 语音记事页：录音待转写（回电脑 SenseVoice）/ 离线识别（本机引擎） 两模式。
+ *  即时识别（系统接口被 vivo 封死）与键盘兜底已按用户要求移除；
+ *  键盘语音入口在主页「双麦克风」之二（长按空格）。 */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
     val recording by vm.isRecording.collectAsStateWithLifecycle()
-    val live by vm.liveText.collectAsStateWithLifecycle()
     val voiceError by vm.voiceError.collectAsStateWithLifecycle()
     val savedMsg by vm.savedMsg.collectAsStateWithLifecycle()
     val diaryMode by vm.diaryMode.collectAsStateWithLifecycle()
@@ -79,38 +71,16 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
         }
     }
 
-    val canSystem = remember { com.luyuan.platform.SystemSpeech.available(context) }
     val offlineOk = remember { vm.offlineBundled() }
     var mode by remember {
         val pref = vm.preferredVoiceMode()
         mutableStateOf(
-            when {
-                pref == "dictation" -> MODE_DICTATION
-                pref == "record" -> MODE_RECORD
-                pref == "offline" && offlineOk -> MODE_OFFLINE
-                canSystem -> MODE_SYSTEM
-                else -> MODE_RECORD
-            }
+            if (pref == "offline" && offlineOk) MODE_OFFLINE else MODE_RECORD
         )
     }
-
-    // 系统识别不可用 → 自动退到「录音待转写」（本机语音的最佳出路）
-    LaunchedEffect(voiceError) {
-        if (voiceError?.startsWith("unavailable") == true && mode == MODE_SYSTEM) {
-            mode = MODE_RECORD
-        }
-    }
-    // 键盘模式：自动聚焦并弹键盘
-    val focusRequester = remember { FocusRequester() }
-    val keyboard = LocalSoftwareKeyboardController.current
-    LaunchedEffect(mode) {
-        if (mode == MODE_DICTATION) {
-            focusRequester.requestFocus()
-            keyboard?.show()
-        }
-        if (mode == MODE_OFFLINE) {
-            vm.warmupOffline() // 记忆为离线模式直接进来时也预热
-        }
+    // 进页预热：默认模式是离线时后台先加载模型
+    LaunchedEffect(Unit) {
+        if (mode == MODE_OFFLINE) vm.warmupOffline()
     }
 
     Scaffold(
@@ -133,22 +103,12 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 模式切换（FlowRow：四个芯片窄屏也不挤出去）
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                ModeChip("🎙 即时识别", mode == MODE_SYSTEM) {
-                    vm.cancelRecording()
-                    vm.rememberVoiceMode("auto")
-                    mode = MODE_SYSTEM
-                }
+            // 模式切换
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 ModeChip("📼 录音待转写", mode == MODE_RECORD) {
                     vm.cancelRecording()
                     vm.rememberVoiceMode("record")
                     mode = MODE_RECORD
-                }
-                ModeChip("⌨ 键盘", mode == MODE_DICTATION) {
-                    vm.cancelRecording()
-                    vm.rememberVoiceMode("dictation")
-                    mode = MODE_DICTATION
                 }
                 if (offlineOk) {
                     ModeChip("📴 离线识别", mode == MODE_OFFLINE) {
@@ -161,36 +121,6 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
             }
 
             when (mode) {
-                MODE_SYSTEM -> {
-                    Spacer(Modifier.height(4.dp))
-                    Text("🐱", fontSize = 64.sp)
-                    Text(
-                        text = when {
-                            recording -> live.ifBlank { "聆听中…说完自动保存" }
-                            savedMsg.isNotBlank() -> "✅ 已记下"
-                            else -> "点下方按钮开始说话"
-                        },
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                    if (recording) {
-                        Button(onClick = { vm.stopRecording() }, modifier = Modifier.size(120.dp)) {
-                            Text("停止")
-                        }
-                    } else {
-                        Button(
-                            onClick = { vm.startRecording(diaryMode) },
-                            modifier = Modifier.size(120.dp)
-                        ) { Text(if (savedMsg.isBlank()) "开始" else "再说一句") }
-                    }
-                    voiceError?.takeIf { !it.startsWith("unavailable") }?.let {
-                        Text(
-                            "⚠️ $it",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-
                 MODE_RECORD -> {
                     Spacer(Modifier.height(4.dp))
                     Text("🎙️", fontSize = 64.sp)
@@ -238,7 +168,8 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                     }
                 }
 
-                MODE_OFFLINE -> {
+                else -> {
+                    // 离线识别
                     Spacer(Modifier.height(4.dp))
                     Text("📴", fontSize = 64.sp)
                     val busy by vm.offlineBusy.collectAsStateWithLifecycle()
@@ -295,53 +226,6 @@ fun RecordScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                                 )
                             }
                         }
-                    }
-                }
-
-                else -> {
-                    // 键盘兜底：长按空格语音输入（讯飞引擎），或直接打字
-                    var dictation by remember { mutableStateOf("") }
-                    var prefilled by remember { mutableStateOf(false) }
-                    LaunchedEffect(diaryMode) {
-                        if (diaryMode && !prefilled) {
-                            dictation = vm.todayDiary.value?.text ?: ""
-                            prefilled = true
-                        }
-                    }
-                    voiceError?.let {
-                        Text(
-                            if (it.startsWith("unavailable")) "⚠️ 本机没有可用的系统语音服务（$it）"
-                            else "⚠️ $it",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                    Text(
-                        "长按键盘空格说话，文字会打到这里；也可直接打字",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = dictation,
-                        onValueChange = { dictation = it },
-                        placeholder = { Text(if (diaryMode) "今天的日记…" else "说点什么…") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp)
-                            .focusRequester(focusRequester),
-                        minLines = 4
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(
-                            onClick = {
-                                vm.saveDictation(dictation, diaryMode)
-                                dictation = ""
-                            },
-                            enabled = dictation.isNotBlank()
-                        ) { Text(if (diaryMode) "保存日记" else "保存笔记") }
-                        TextButton(onClick = onBack) { Text("完成") }
                     }
                 }
             }

@@ -6,6 +6,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.EditNote
@@ -20,10 +22,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -39,6 +41,7 @@ import com.luyuan.ui.PeopleScreen
 import com.luyuan.ui.RecordScreen
 import com.luyuan.ui.SettingsScreen
 import com.luyuan.ui.TrashScreen
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -67,40 +70,39 @@ class MainActivity : ComponentActivity() {
         if (i?.getStringExtra("auto") == "record") "record" else "list"
 }
 
+/** 三页横滑：日记(负一屏) ← 记事(主页) → 人脉(第二屏)，底部栏点选与手势互通（与 PC 面板同构） */
 @Composable
 fun AppRoot(startDest: String) {
     val nav = rememberNavController()
     val vm: LuyuanViewModel = viewModel()
     val backStackEntry by nav.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    val topLevel = setOf("list", "journal", "people")
+    val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(initialPage = 1) { 3 }
 
     LaunchedEffect(startDest) {
         if (startDest == "record") {
-            vm.startRecording()
+            // 快捷磁贴/音量键/小部件唤起：直接开「录音待转写」（系统识别通道已移除）
+            vm.startWavRecording()
             nav.navigate("record") { launchSingleTop = true }
         }
     }
 
     Scaffold(
         bottomBar = {
-            if (currentRoute in topLevel) {
+            if (currentRoute == "home") {
                 NavigationBar {
                     val tabs = listOf(
-                        Triple("list", "记事", Icons.AutoMirrored.Filled.Notes),
-                        Triple("journal", "日记", Icons.Default.EditNote),
-                        Triple("people", "人脉", Icons.Default.People)
+                        Triple(0, "日记", Icons.Default.EditNote),
+                        Triple(1, "记事", Icons.AutoMirrored.Filled.Notes),
+                        Triple(2, "人脉", Icons.Default.People)
                     )
-                    for ((route, label, icon) in tabs) {
+                    for ((page, label, icon) in tabs) {
                         NavigationBarItem(
-                            selected = currentRoute == route,
+                            selected = pagerState.currentPage == page,
                             onClick = {
-                                if (currentRoute != route) {
-                                    nav.navigate(route) {
-                                        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
+                                if (pagerState.currentPage != page) {
+                                    scope.launch { pagerState.animateScrollToPage(page) }
                                 }
                             },
                             icon = { Icon(icon, contentDescription = label) },
@@ -113,23 +115,28 @@ fun AppRoot(startDest: String) {
     ) { pad ->
         NavHost(
             navController = nav,
-            startDestination = "list",
+            startDestination = "home",
             modifier = Modifier.padding(pad)
         ) {
-            composable("list") {
-                NoteListScreen(
-                    vm = vm,
-                    onRecord = { nav.navigate("record") },
-                    onDetail = { id -> nav.navigate("detail/$id") },
-                    onSettings = { nav.navigate("settings") },
-                    onTrash = { nav.navigate("trash") }
-                )
-            }
-            composable("journal") {
-                JournalScreen(vm = vm, onRecord = { nav.navigate("record") })
-            }
-            composable("people") {
-                PeopleScreen(vm = vm)
+            composable("home") {
+                // beyondBounds=2：三页常驻，翻页不丢输入框草稿/搜索词/列表位置
+                HorizontalPager(
+                    state = pagerState,
+                    beyondBoundsPageCount = 2,
+                    modifier = Modifier.fillMaxSize()
+                ) { page ->
+                    when (page) {
+                        0 -> JournalScreen(vm = vm, onRecord = { nav.navigate("record") })
+                        1 -> NoteListScreen(
+                            vm = vm,
+                            onRecord = { nav.navigate("record") },
+                            onDetail = { id -> nav.navigate("detail/$id") },
+                            onSettings = { nav.navigate("settings") },
+                            onTrash = { nav.navigate("trash") }
+                        )
+                        else -> PeopleScreen(vm = vm)
+                    }
+                }
             }
             composable("record") {
                 RecordScreen(vm = vm, onBack = { nav.popBackStack() })

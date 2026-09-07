@@ -33,6 +33,10 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     private val _todayDiary = MutableStateFlow<Note?>(null)
     val todayDiary: StateFlow<Note?> = _todayDiary
 
+    /** 全部日记（含今天，新→旧）：日记页「之前的日记」+ 连续天数共用 */
+    private val _diaries = MutableStateFlow<List<Note>>(emptyList())
+    val diaries: StateFlow<List<Note>> = _diaries
+
     /** 联系人（contacts/ 目录，与 PC 端人脉页互通） */
     private val _contacts = MutableStateFlow<List<Contact>>(emptyList())
     val contacts: StateFlow<List<Contact>> = _contacts
@@ -149,6 +153,7 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             _notes.value = NoteRepository.listNotes(ctx)
             _todayDiary.value = NoteRepository.todayDiaryNote(ctx)
+            _diaries.value = NoteRepository.listDiaries(ctx)
             _contacts.value = ContactRepository.listContacts(ctx)
             _refreshing.value = false
             _refreshDone.value += 1

@@ -25,6 +25,13 @@ object NoteRepository {
 
     // ---------- 日记（tags=["日记"]，一天一篇，与 PC 端三页系统对齐） ----------
 
+    /** 全部日记（含今天，新→旧）：日记页「之前的日记」列表与连续天数共用 */
+    fun listDiaries(context: Context): List<Note> {
+        return allDistinct(context)
+            .filter { !it.deleted && it.tags.contains("日记") }
+            .sortedByDescending { it.created_at }
+    }
+
     /** 今天的日记（没有则 null） */
     fun todayDiaryNote(context: Context): Note? {
         val today = LocalDate.now().toString()

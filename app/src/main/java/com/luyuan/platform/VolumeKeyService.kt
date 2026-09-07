@@ -20,10 +20,12 @@ class VolumeKeyService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         running = true
+        instance = this
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
         running = false
+        instance = null
         return super.onUnbind(intent)
     }
 
@@ -61,5 +63,35 @@ class VolumeKeyService : AccessibilityService() {
         private const val DOUBLE_PRESS_MS = 600L
         var running = false
             private set
+
+        @Volatile
+        private var instance: VolumeKeyService? = null
+
+        /**
+         * 「双麦克风」之二：对屏幕底部中央做一次长按手势，代替手指长按键盘空格
+         * （vivo 输入法空格长按=讯飞语音输入）。需要无障碍服务已开启 + canPerformGestures。
+         * 手势坐标是估算（键盘布局不公开），失败返回 false，由调用方提示手动长按。
+         */
+        fun spaceLongPress(): Boolean {
+            val svc = instance ?: return false
+            return try {
+                val m = android.content.res.Resources.getSystem().displayMetrics
+                val x = m.widthPixels * 0.5f
+                val y = m.heightPixels * 0.935f // 键盘末排中央（空格键大致位置）
+                val path = android.graphics.Path().apply {
+                    moveTo(x, y)
+                    lineTo(x, y)
+                }
+                val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(
+                    path, 0, 550
+                )
+                val gesture = android.accessibilityservice.GestureDescription.Builder()
+                    .addStroke(stroke)
+                    .build()
+                svc.dispatchGesture(gesture, null, null)
+            } catch (_: Exception) {
+                false
+            }
+        }
     }
 }

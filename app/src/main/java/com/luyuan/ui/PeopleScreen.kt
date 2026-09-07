@@ -279,6 +279,27 @@ private fun ContactDetailDialog(
         confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // 分享名片：拼成纯文本走系统分享——对方不需要装路远，微信/QQ/短信都能收
+                TextButton(onClick = {
+                    val lines = mutableListOf("【${contact.name}】")
+                    if (contact.phone.isNotBlank()) lines.add("电话：${contact.phone}")
+                    if (contact.wechat.isNotBlank()) lines.add("微信：${contact.wechat}")
+                    if (contact.qq.isNotBlank()) lines.add("QQ：${contact.qq}")
+                    if (contact.birthday.isNotBlank()) lines.add("生日：${contact.birthday}")
+                    for (line in contact.info) lines.add("· $line")
+                    try {
+                        context.startActivity(
+                            Intent.createChooser(
+                                Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, lines.joinToString("\n"))
+                                },
+                                "分享联系人"
+                            )
+                        )
+                    } catch (_: Exception) {
+                    }
+                }) { Text("📤 分享名片（文字形式，谁都能看）") }
                 InfoRow("电话", contact.phone) {
                     if (contact.phone.isNotBlank()) {
                         Icon(

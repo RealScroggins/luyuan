@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material3.AlertDialog
@@ -69,12 +70,19 @@ private fun journalParseDay(created: String): LocalDate? = try {
     try { LocalDateTime.parse(created).toLocalDate() } catch (_: Exception) { null }
 }
 
+private fun journalDayLabel(d: LocalDate): String {
+    val dow = when (d.dayOfWeek.value) {
+        1 -> "一"; 2 -> "二"; 3 -> "三"; 4 -> "四"; 5 -> "五"; 6 -> "六"; else -> "日"
+    }
+    return "${d.monthValue}月${d.dayOfMonth}日 周$dow"
+}
+
 /** 负一屏 · 日记：一天一篇（tags=["日记"]，与 PC 端统一），键盘/语音/表情/配图 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
-    val notes by vm.notes.collectAsStateWithLifecycle()
     val todayDiary by vm.todayDiary.collectAsStateWithLifecycle()
+    val diaries by vm.diaries.collectAsStateWithLifecycle()
     val enabled by vm.journalEnabled.collectAsStateWithLifecycle()
     val time by vm.journalTime.collectAsStateWithLifecycle()
     var showTime by remember { mutableStateOf(false) }
@@ -88,12 +96,9 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
         if (!dirty) diaryValue = TextFieldValue(todayDiary?.text ?: "")
     }
 
-    val streak = remember(notes, todayDiary) {
-        val diaryDays = mutableSetOf<LocalDate>()
-        for (n in notes) {
-            if (n.tags.contains("日记")) journalParseDay(n.created_at)?.let { diaryDays.add(it) }
-        }
-        todayDiary?.let { td -> journalParseDay(td.created_at)?.let { d -> diaryDays.add(d) } }
+    // 连续天数数据源 = 全部日记（此前误用主列表 notes——它天生排除日记，火苗永远数不出昨天）
+    val streak = remember(diaries) {
+        val diaryDays = diaries.mapNotNull { journalParseDay(it.created_at) }.toSet()
         var s = 0
         var d = LocalDate.now()
         while (d in diaryDays) {
@@ -102,6 +107,12 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
         }
         s
     }
+
+    val pastDiaries = remember(diaries) {
+        val today = LocalDate.now()
+        diaries.filter { journalParseDay(it.created_at) != today }
+    }
+    var viewingDiary by remember { mutableStateOf<Note?>(null) }
 
     val pickImage = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
@@ -203,7 +214,7 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
                         )
                         Button(
                             onClick = {
-                                vm.startRecording(diary = true)
+                                vm.startWavRecording(diary = true)
                                 onRecord()
                             },
                             modifier = Modifier.size(width = 96.dp, height = 40.dp)
@@ -222,6 +233,49 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
                             modifier = Modifier.weight(1f)
                         )
                         TextButton(onClick = { pickImage.launch("image/*") }) { Text("＋ 配图") }
+                    }
+                }
+            }
+            // ---------- 之前的日记（含电脑端写的，同步过来就能看） ----------
+            if (pastDiaries.isNotEmpty()) {
+                Text(
+                    "之前的日记",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                for (d in pastDiaries.take(30)) {
+                    val day = journalParseDay(d.created_at)
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewingDiary = d }
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    day?.let { journalDayLabel(it) } ?: d.created_at.take(10),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                                if (d.images.isNotEmpty()) {
+                                    Text(
+                                        "  🖼${d.images.size}",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Text(
+                                d.text.replace("\n", " ").take(60) + if (d.text.length > 60) "…" else "",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
@@ -404,6 +458,48 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
                     contentScale = ContentScale.FillWidth,
                     modifier = Modifier.fillMaxWidth()
                 )
+            }
+        )
+    }
+
+    viewingDiary?.let { d ->
+        AlertDialog(
+            onDismissRequest = { viewingDiary = null },
+            title = {
+                val day = journalParseDay(d.created_at)
+                Text(
+                    day?.let { journalDayLabel(it) } ?: d.created_at.take(10),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            confirmButton = { TextButton(onClick = { viewingDiary = null }) { Text("关闭") } },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text(d.text, style = MaterialTheme.typography.bodyMedium)
+                    if (d.images.isNotEmpty()) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp)
+                                .horizontalScroll(rememberScrollState())
+                        ) {
+                            for (rel in d.images) {
+                                AsyncImage(
+                                    model = File(StorageLocator.getRoot(context), rel),
+                                    contentDescription = "日记配图",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(84.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.surfaceVariant,
+                                            RoundedCornerShape(10.dp)
+                                        )
+                                )
+                            }
+                        }
+                    }
+                }
             }
         )
     }

@@ -1,8 +1,11 @@
 package com.luyuan.ui
 
+import android.content.Intent
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,10 +29,12 @@ import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.KeyboardVoice
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Mood
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -51,9 +56,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -61,6 +69,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -74,6 +83,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.luyuan.domain.Note
 import com.luyuan.platform.PermissionHelper
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -295,6 +306,37 @@ fun NoteListScreen(
                         }) {
                             Icon(Icons.Default.SelectAll, contentDescription = "全选/全不选")
                         }
+                        // 多选分享：把选中笔记按时间顺序拼成纯文本，走系统分享（微信/QQ等都能收）
+                        IconButton(
+                            enabled = selected.isNotEmpty(),
+                            onClick = {
+                                val body = notes.filter { it.id in selected }
+                                    .sortedByDescending { it.created_at }
+                                    .joinToString("\n\n") { n ->
+                                        val dt = try {
+                                            OffsetDateTime.parse(n.created_at).toLocalDateTime()
+                                                .format(DateTimeFormatter.ofPattern("M月d日 HH:mm"))
+                                        } catch (_: Exception) {
+                                            ""
+                                        }
+                                        (if (dt.isNotBlank()) "〔$dt〕" else "") + n.text
+                                    }
+                                try {
+                                    context.startActivity(
+                                        Intent.createChooser(
+                                            Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_TEXT, body)
+                                            },
+                                            "分享 ${selected.size} 条笔记"
+                                        )
+                                    )
+                                } catch (_: Exception) {
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = "分享选中")
+                        }
                         IconButton(
                             enabled = selected.isNotEmpty(),
                             onClick = {
@@ -346,6 +388,9 @@ fun NoteListScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    val scope = rememberCoroutineScope()
+                    val keyboard = LocalSoftwareKeyboardController.current
+                    val draftFocus = remember { FocusRequester() }
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
@@ -362,12 +407,36 @@ fun NoteListScreen(
                                     draft = ""
                                 }
                             }),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f).focusRequester(draftFocus)
                         )
-                        Spacer(Modifier.size(8.dp))
+                        Spacer(Modifier.size(4.dp))
+                        // 麦克风之二：键盘语音（vivo 输入法长按空格=讯飞语音，断网可用）。
+                        // 弹键盘后无障碍服务自动代按一次空格；服务没开则提示手动长按。
+                        IconButton(onClick = {
+                            draftFocus.requestFocus()
+                            keyboard?.show()
+                            scope.launch {
+                                delay(900) // 等键盘完全弹出
+                                val ok = com.luyuan.platform.VolumeKeyService.spaceLongPress()
+                                if (!ok) {
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "键盘弹出后请手动长按空格说话（或到设置开启无障碍服务代按）",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
+                        }) {
+                            Icon(
+                                Icons.Default.KeyboardVoice,
+                                contentDescription = "键盘语音",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(Modifier.size(4.dp))
                         Button(
                             onClick = {
-                                vm.startRecording()
+                                vm.startWavRecording()
                                 onRecord()
                             },
                             shape = CircleShape,
@@ -457,6 +526,16 @@ fun NoteListScreen(
                                 selecting = selecting,
                                 isSelected = note.id in selected,
                                 onClick = { onDetail(note.id) },
+                                onLongClick = {
+                                    // 长按 = 进入多选并选中这条（等效点多选按钮）
+                                    if (!selecting) {
+                                        selecting = true
+                                        selected = selected + note.id
+                                    } else {
+                                        selected = if (note.id in selected) selected - note.id
+                                        else selected + note.id
+                                    }
+                                },
                                 onToggleSelect = {
                                     selected = if (note.id in selected) selected - note.id
                                     else selected + note.id
@@ -529,6 +608,7 @@ private fun MoodBar(notes: List<Note>) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun NoteCard(
     note: Note,
@@ -536,13 +616,17 @@ fun NoteCard(
     selecting: Boolean = false,
     isSelected: Boolean = false,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     onToggleSelect: () -> Unit = {}
 ) {
     val (title, summary) = remember(note.text) { splitTitleSummary(note.text) }
     Card(
-        modifier = Modifier.fillMaxWidth().clickable {
-            if (selecting) onToggleSelect() else onClick()
-        },
+        modifier = Modifier.fillMaxWidth().combinedClickable(
+            onClick = {
+                if (selecting) onToggleSelect() else onClick()
+            },
+            onLongClick = onLongClick
+        ),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(
             1.dp,
