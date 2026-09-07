@@ -514,7 +514,7 @@ fun NoteListScreen(
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize()
-                        .offset { IntOffset(0, overPull.roundToInt()) } // 皮筋跟手：顶端下拖时整列随指下移
+                        .offset { IntOffset(0, pullConn.overPull.roundToInt()) } // 皮筋跟手：顶端下拖时整列随指下移
                         .padding(horizontal = 12.dp)
                         .padding(top = 4.dp)
                 ) {
