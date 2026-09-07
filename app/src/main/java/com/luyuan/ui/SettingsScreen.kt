@@ -58,7 +58,6 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = 
     val askCfg = remember { AskRemote.loadConfig(context) }
     var askKey by remember { mutableStateOf(askCfg.key) }
     var askBase by remember { mutableStateOf(askCfg.baseUrl) }
-    var askModel by remember { mutableStateOf(askCfg.model) }
     var askSaved by remember { mutableStateOf(false) }
 
     suspend fun rescan() {
@@ -217,7 +216,8 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = 
             Text("🤖 问路远（AI 问答）", style = MaterialTheme.typography.titleMedium)
             Text(
                 "填一次 OpenAI 兼容接口（默认 DeepSeek），就能随时用对话问它，回答会参考你本机的笔记和待办。" +
-                    "Key 只存本机 App 私有目录，不进同步目录；私密标签的笔记不会发出去。",
+                    "Key 只存本机 App 私有目录，不进同步目录；私密标签的笔记不会发出去。" +
+                    "模型不在手填——在对话页顶部一键切换（快答/深思/视觉/Pro）。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -229,25 +229,16 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = 
                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth()
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = askBase,
-                    onValueChange = { askBase = it; askSaved = false },
-                    label = { Text("接口地址") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
-                OutlinedTextField(
-                    value = askModel,
-                    onValueChange = { askModel = it; askSaved = false },
-                    label = { Text("模型") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            OutlinedTextField(
+                value = askBase,
+                onValueChange = { askBase = it; askSaved = false },
+                label = { Text("接口地址（默认 DeepSeek）") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
                 Button(onClick = {
-                    AskRemote.saveConfig(context, askKey, askBase, askModel)
+                    AskRemote.saveConfig(context, askKey, askBase)
                     askSaved = true
                 }) { Text(if (askSaved) "✅ 已保存" else "保存") }
                 Button(

@@ -8,26 +8,45 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * 问路远手机版（开发计划终稿 §3.A2）：OpenAI 兼容 API 直连。
- * - Key/URL/模型只存本机 App 私有 SharedPreferences（隐私红线 §4.2，永不进同步目录/仓库）
- * - 上下文 = 本机笔记近期摘录 + 今日待办摘要（手机端不做 embedding）
- * - **私密标签笔记一律不外发**（隐私红线 §4.4）
- * - 会话历史只在内存里，不落 notes（不污染同步）
+ * 问路远手机版（终稿 §3.A2 · v1.9.0 模型目录版）：OpenAI 兼容 API 直连。
+ * - Key/URL 只存本机 App 私有 SharedPreferences（隐私红线 §4.2，永不进同步目录/仓库）
+ * - 模型从内置目录选择（2026-09 官方现状：deepseek-chat/reasoner 已于 2026-07-24 停用，
+ *   现行模型 = deepseek-v4-flash 系；思考开关 = "thinking":{"type":"enabled"/"disabled"}，
+ *   不发该参数默认思考开启，所以快答必须显式 disabled；视觉 = deepseek-v4-flash-vision-exp）
+ * - 上下文 = 本机近期笔记 + 待办摘要；私密标签笔记一律不外发（§4.4）
  */
 object AskRemote {
 
     private const val PREFS = "ask_prefs"
     private const val DEFAULT_BASE = "https://api.deepseek.com"
-    private const val DEFAULT_MODEL = "deepseek-chat"
     private const val PRIVATE_TAG = "私密"
     private const val MAX_CONTEXT_CHARS = 6000
 
-    data class Config(val key: String, val baseUrl: String, val model: String) {
+    /** 可选模型（类 Chatbox 选择器目录）：thinking=null 表示该模型不带 thinking 参数 */
+    data class ModelInfo(
+        val key: String,
+        val id: String,
+        val label: String,
+        val emoji: String,
+        val thinking: Boolean?,
+        val vision: Boolean
+    )
+
+    val CATALOG = listOf(
+        ModelInfo("flash_fast", "deepseek-v4-flash", "V4 Flash · 快答", "⚡", thinking = false, vision = false),
+        ModelInfo("flash_deep", "deepseek-v4-flash", "V4 Flash · 深思", "🧠", thinking = true, vision = false),
+        ModelInfo("flash_vision", "deepseek-v4-flash-vision-exp", "V4 Flash 视觉·实验", "👁", thinking = null, vision = true),
+        ModelInfo("pro_fast", "deepseek-v4-pro", "V4 Pro · 旗舰", "💎", thinking = false, vision = false),
+        ModelInfo("pro_deep", "deepseek-v4-pro", "V4 Pro · 深思", "💎🧠", thinking = true, vision = false)
+    )
+
+    fun modelByKey(key: String): ModelInfo = CATALOG.firstOrNull { it.key == key } ?: CATALOG[0]
+
+    data class Config(val key: String, val baseUrl: String, val modelKey: String) {
         val ready: Boolean get() = key.isNotBlank()
     }
 
@@ -35,25 +54,42 @@ object AskRemote {
 
     fun loadConfig(context: Context): Config {
         val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        var modelKey = p.getString("model_key", null)
+        if (modelKey == null) {
+            // 迁移 v1.8.0 手填的模型名（含 "DeepSeekchat" 之类误填）：一律归到新目录对应条目。
+            // 旧名已于 2026-07-24 停用，语义映射：chat→快答，reasoner→深思
+            val legacy = (p.getString("model", "") ?: "").lowercase()
+                .replace(" ", "").replace("_", "-")
+            modelKey = when {
+                legacy.contains("reasoner") -> "flash_deep"
+                legacy.contains("vision") -> "flash_vision"
+                legacy.contains("pro") -> "pro_fast"
+                else -> "flash_fast" // deepseek-chat / deepseekchat / 空值
+            }
+            p.edit().putString("model_key", modelKey).apply()
+        }
         return Config(
             key = p.getString("key", "") ?: "",
             baseUrl = (p.getString("base", "") ?: "").ifBlank { DEFAULT_BASE },
-            model = (p.getString("model", "") ?: "").ifBlank { DEFAULT_MODEL }
+            modelKey = modelKey
         )
     }
 
-    fun saveConfig(context: Context, key: String, baseUrl: String, model: String) {
+    fun saveConfig(context: Context, key: String, baseUrl: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString("key", key.trim())
             .putString("base", baseUrl.trim().trimEnd('/'))
-            .putString("model", model.trim())
             .apply()
+    }
+
+    fun saveModelKey(context: Context, modelKey: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString("model_key", modelKey).apply()
     }
 
     /** 本机上下文：今日待办摘要 + 近期笔记摘录（排除私密）。超长截断，控 token。 */
     fun buildContext(context: Context): String {
         val sb = StringBuilder()
-        // 今日待办（联系人待办 + 未触发提醒）
         val todoLines = mutableListOf<String>()
         try {
             for (c in ContactRepository.listContacts(context)) {
@@ -75,7 +111,6 @@ object AskRemote {
             todoLines.take(20).forEach { sb.appendLine("- $it") }
             sb.appendLine()
         }
-        // 近期笔记摘录（最新在前，跳过私密）
         try {
             val notes = NoteRepository.listNotes(context)
                 .filter { PRIVATE_TAG !in it.tags }
@@ -94,35 +129,70 @@ object AskRemote {
     }
 
     /**
-     * 调 OpenAI 兼容 chat/completions。返回回答文本；失败抛异常（message 已是人话）。
-     * history：本轮对话的之前若干轮（仅内存，不落盘）。
+     * 调 OpenAI 兼容 chat/completions。images = data URL（data:image/jpeg;base64,...），
+     * 仅视觉模型可用。返回回答文本；失败抛异常（message 已是人话）。
      */
-    fun ask(config: Config, question: String, history: List<Turn>, localContext: String): String {
+    fun ask(
+        config: Config,
+        model: ModelInfo,
+        question: String,
+        images: List<String>,
+        history: List<Turn>,
+        localContext: String
+    ): String {
         if (!config.ready) throw IllegalStateException("还没填 API Key，去设置页填一个")
-        val messages = buildList {
-            add(
-                Turn(
-                    "system",
-                    "你是「路远」，路河的本地记事助手。回答要简洁、说人话。" +
-                        "下面是用户本机的待办与笔记摘录，仅作参考；" +
-                        "与问题无关就不要复述；摘录里没有的信息不要编造。\n\n$localContext"
-                )
-            )
-            addAll(history.takeLast(8))
-            add(Turn("user", question))
-        }
+
+        val userContent: kotlinx.serialization.JsonElement =
+            if (images.isEmpty()) {
+                kotlinx.serialization.json.JsonPrimitive(question)
+            } else {
+                buildJsonArray {
+                    add(buildJsonObject {
+                        put("type", "text")
+                        put("text", question.ifBlank { "看看这些图片" })
+                    })
+                    for (du in images) {
+                        add(buildJsonObject {
+                            put("type", "image_url")
+                            put("image_url", buildJsonObject { put("url", du) })
+                        })
+                    }
+                }
+            }
+
         val payload = buildJsonObject {
-            put("model", config.model)
-            put("temperature", 0.4)
-            put("max_tokens", 1500)
+            put("model", model.id)
             put("messages", buildJsonArray {
-                for (m in messages) add(
-                    buildJsonObject {
+                add(buildJsonObject {
+                    put("role", "system")
+                    put(
+                        "content",
+                        "你是「路远」，路河的本地记事助手。回答要简洁、说人话。" +
+                            "下面是用户本机的待办与笔记摘录，仅作参考；" +
+                            "与问题无关就不要复述；摘录里没有的信息不要编造。\n\n$localContext"
+                    )
+                })
+                for (m in history.takeLast(8)) {
+                    add(buildJsonObject {
                         put("role", m.role)
                         put("content", m.content)
-                    }
-                )
+                    })
+                }
+                add(buildJsonObject {
+                    put("role", "user")
+                    put("content", userContent)
+                })
             })
+            // 思考开关（官方格式）：v4 系默认思考开启——快答必须显式 disabled
+            if (model.thinking != null) {
+                put("thinking", buildJsonObject {
+                    put("type", if (model.thinking) "enabled" else "disabled")
+                })
+                if (model.thinking) put("reasoning_effort", "high")
+            }
+            // 思考模式下 temperature 不生效，干脆不发
+            if (model.thinking != true) put("temperature", 0.4)
+            put("max_tokens", if (model.vision) 2000 else 1500)
         }
 
         val conn = URL(config.baseUrl + "/chat/completions")
@@ -130,7 +200,7 @@ object AskRemote {
         try {
             conn.requestMethod = "POST"
             conn.connectTimeout = 15000
-            conn.readTimeout = 90000
+            conn.readTimeout = 120000
             conn.doOutput = true
             conn.setRequestProperty("Content-Type", "application/json")
             conn.setRequestProperty("Authorization", "Bearer " + config.key)
@@ -153,7 +223,7 @@ object AskRemote {
     private fun humanError(code: Int, body: String): String = when (code) {
         401 -> "API Key 无效（去设置页检查一下）"
         402 -> "API 账户余额不足"
-        404 -> "接口地址或模型名不对（检查设置页的 Base URL / 模型）"
+        404 -> "接口地址或模型不对（模型在对话页顶部切换）"
         429 -> "请求太频繁或额度限流，稍后再试"
         else -> {
             val snippet = body.take(200).replace(Regex("\\s+"), " ")

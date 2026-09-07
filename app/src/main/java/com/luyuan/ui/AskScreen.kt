@@ -1,6 +1,14 @@
 package com.luyuan.ui
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,10 +22,13 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,6 +37,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -38,19 +50,24 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Image
 import com.luyuan.data.AskRemote
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 问路远（手机版 · 开发计划终稿 §3.A2）：OpenAI 兼容 API 直连对话。
- * 上下文 = 本机近期笔记 + 今日待办摘要（AskRemote 组装，私密笔记不外发）；
- * 会话只在内存；Key 在设置页维护；断网/无 Key 报错但不影响记事。
+ * 问路远（类 Chatbox 对话页）：
+ * - 顶部模型选择器：官方模型目录（快答/深思/视觉/Pro），思考开关与视觉能力一目了然
+ * - 图片通道：选图自动压缩成 base64（data URL），仅视觉模型可发
+ * - 上下文 = 本机笔记 + 待办（私密不外发）；会话只在内存
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,23 +77,46 @@ fun AskScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
     val listState = rememberLazyListState()
 
     val messages = remember { mutableStateListOf<AskRemote.Turn>() }
+    var modelKey by remember { mutableStateOf(AskRemote.loadConfig(context).modelKey) }
+    var model by remember { mutableStateOf(AskRemote.modelByKey(modelKey)) }
+    var showModelDialog by remember { mutableStateOf(false) }
     var question by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
+    data class PendingImg(val bmp: Bitmap, val dataUrl: String)
+    val pending = remember { mutableStateListOf<PendingImg>() }
+
+    val pickImage = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val p = compressImage(context, uri)
+                if (p != null && pending.size < 4) pending.add(p)
+            }
+        }
+    }
+
     fun send() {
         val q = question.trim()
-        if (q.isBlank() || busy) return
+        if ((q.isBlank() && pending.isEmpty()) || busy) return
+        val imgs = pending.map { it.dataUrl }
+        if (imgs.isNotEmpty() && !model.vision) {
+            error = "当前模型（${model.label}）不支持图片，点顶部切换到 👁 视觉模型"
+            return
+        }
         val history = messages.toList()
-        messages.add(AskRemote.Turn("user", q))
+        messages.add(AskRemote.Turn("user", if (q.isBlank()) "（图片）" else q))
         question = ""
+        pending.clear()
         busy = true
         error = null
         scope.launch {
             val answer = try {
                 withContext(Dispatchers.IO) {
                     val cfg = AskRemote.loadConfig(context)
-                    AskRemote.ask(cfg, q, history, AskRemote.buildContext(context))
+                    AskRemote.ask(cfg, model, q, imgs, history, AskRemote.buildContext(context))
                 }
             } catch (e: Exception) {
                 error = e.message ?: "请求失败"
@@ -121,10 +161,38 @@ fun AskScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                 .padding(padding)
                 .imePadding()
         ) {
+            // ---------- 模型选择器（点击切换，状态常显） ----------
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showModelDialog = true }
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        "${model.emoji} ${model.label}",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        if (model.vision) "可发图" else "纯文字",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text("  ▾", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
             if (messages.isEmpty() && !busy) {
                 Text(
-                    "问点什么。我会参考你本机最近的笔记和待办来回答（私密标签的笔记不会发出去）。\n" +
-                        "API Key 在「设置 → 问路远」里填。",
+                    "问点什么，我会参考你本机最近的笔记和待办（私密标签的笔记不会发出去）。\n" +
+                        "要发图片请先切到 👁 视觉模型。API Key 在「设置 → 问路远」里填。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(20.dp)
@@ -175,7 +243,7 @@ fun AskScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                                 strokeWidth = 2.dp
                             )
                             Text(
-                                "翻笔记中…",
+                                "思考中…",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -191,28 +259,158 @@ fun AskScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                 )
             }
+            // ---------- 待发图片缩略条 ----------
+            if (pending.isNotEmpty()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .horizontalScroll(rememberScrollState())
+                ) {
+                    for (p in pending) {
+                        Image(
+                            bitmap = p.bmp.asImageBitmap(),
+                            contentDescription = "待发图片，点按移除",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(64.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .clickable { pending.remove(p) }
+                        )
+                    }
+                }
+            }
+            // ---------- 输入行：🖼 图片 + 文本 + 发送 ----------
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
+                IconButton(
+                    onClick = {
+                        pickImage.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    enabled = !busy
+                ) {
+                    Icon(
+                        Icons.Default.Image,
+                        contentDescription = "添加图片",
+                        tint = if (model.vision) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 OutlinedTextField(
                     value = question,
                     onValueChange = { question = it },
-                    placeholder = { Text("问点什么…") },
+                    placeholder = {
+                        Text(if (model.vision) "发图片或问点什么…" else "问点什么…")
+                    },
                     singleLine = false,
                     maxLines = 4,
                     modifier = Modifier.weight(1f)
                 )
                 Button(
                     onClick = { send() },
-                    enabled = question.isNotBlank() && !busy,
+                    enabled = (question.isNotBlank() || pending.isNotEmpty()) && !busy,
                     modifier = Modifier.padding(start = 8.dp)
                 ) {
-                    Text("发送")
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送")
                 }
             }
         }
     }
+
+    // ---------- 模型选择弹窗 ----------
+    if (showModelDialog) {
+        AlertDialog(
+            onDismissRequest = { showModelDialog = false },
+            title = { Text("选择模型", fontWeight = FontWeight.Bold) },
+            confirmButton = {
+                TextButton(onClick = { showModelDialog = false }) { Text("关闭") }
+            },
+            text = {
+                Column {
+                    for (m in AskRemote.CATALOG) {
+                        val selected = m.key == modelKey
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    modelKey = m.key
+                                    model = m
+                                    AskRemote.saveModelKey(context, m.key)
+                                    showModelDialog = false
+                                }
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text(
+                                (if (selected) "● " else "○ ") + m.emoji + " " + m.label,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                fontSize = 15.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                buildString {
+                                    if (m.vision) append("可发图 ")
+                                    append(if (m.thinking == true) "会深思" else "秒回")
+                                },
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Text(
+                        "深思模式回答慢但更聪明；图片只支持 👁 视觉模型（实验）。",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+            }
+        )
+    }
 }
+
+/** 相册图 → 压缩（最长边 1280，JPEG 85）→ base64 data URL；返回 (缩略图, dataUrl) */
+private suspend fun compressImage(context: Context, uri: android.net.Uri): Pair<Bitmap, String>? =
+    withContext(Dispatchers.IO) {
+        try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, bounds)
+            }
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@withContext null
+            var sample = 1
+            while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 1280) sample *= 2
+            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+            val bmp = context.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, opts)
+            } ?: return@withContext null
+            val scale = 1280f / maxOf(bmp.width, bmp.height)
+            val out = if (scale < 1f) {
+                Bitmap.createScaledBitmap(
+                    bmp,
+                    (bmp.width * scale).toInt().coerceAtLeast(1),
+                    (bmp.height * scale).toInt().coerceAtLeast(1),
+                    true
+                )
+            } else bmp
+            val baos = java.io.ByteArrayOutputStream()
+            out.compress(Bitmap.CompressFormat.JPEG, 85, baos)
+            val b64 = android.util.Base64.encodeToString(
+                baos.toByteArray(),
+                android.util.Base64.NO_WRAP
+            )
+            Pair(out, "data:image/jpeg;base64,$b64")
+        } catch (_: Exception) {
+            null
+        }
+    }
