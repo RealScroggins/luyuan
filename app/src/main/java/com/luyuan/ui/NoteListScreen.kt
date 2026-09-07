@@ -295,6 +295,19 @@ fun NoteListScreen(
     var selected by remember { mutableStateOf(setOf<String>()) }
     val context = LocalContext.current
     val allFilesGranted = PermissionHelper.hasAllFiles(context)
+    val scope = rememberCoroutineScope()
+    val keyboard = LocalSoftwareKeyboardController.current
+    val draftFocus = remember { FocusRequester() }
+
+    // 桌面小部件「记一笔」直达：聚焦主页输入框并弹键盘
+    val focusTick by vm.focusDraft.collectAsStateWithLifecycle()
+    LaunchedEffect(focusTick) {
+        if (focusTick > 0) {
+            delay(150) // 等 pager 落页稳定
+            draftFocus.requestFocus()
+            keyboard?.show()
+        }
+    }
 
     // 每次回到列表都重新读盘，授权后/同步后立刻可见
     LaunchedEffect(Unit) { vm.refresh() }
@@ -406,9 +419,6 @@ fun NoteListScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    val scope = rememberCoroutineScope()
-                    val keyboard = LocalSoftwareKeyboardController.current
-                    val draftFocus = remember { FocusRequester() }
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp)

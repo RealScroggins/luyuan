@@ -48,6 +48,14 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     private val _refreshDone = MutableStateFlow(0)
     val refreshDone: StateFlow<Int> = _refreshDone
 
+    /** 主页输入框聚焦请求（代际计数）：桌面小部件「记一笔」直达用 */
+    private val _focusDraft = MutableStateFlow(0)
+    val focusDraft: StateFlow<Int> = _focusDraft
+
+    fun requestDraftFocus() {
+        _focusDraft.value += 1
+    }
+
     private val _trash = MutableStateFlow<List<Note>>(emptyList())
     val trash: StateFlow<List<Note>> = _trash
 

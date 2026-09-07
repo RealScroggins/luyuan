@@ -1,29 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 桌面小部件布局：两枚文字按钮（记一笔 / 说话）。RemoteViews 只认传统 View，不能用 Compose -->
+<!-- 桌面小部件：仿输入框样式（点一下直达主页输入框）+ 右侧麦克风（直接开录音）。
+     RemoteViews 只认传统 View，不能用 Compose -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="horizontal"
+    android:gravity="center_vertical"
     android:background="@drawable/widget_bg"
-    android:padding="10dp">
+    android:paddingLeft="16dp"
+    android:paddingRight="10dp"
+    android:paddingTop="10dp"
+    android:paddingBottom="10dp">
 
     <TextView
         android:id="@+id/widget_note"
         android:layout_width="0dp"
         android:layout_height="match_parent"
         android:layout_weight="1"
-        android:gravity="center"
-        android:text="✏️ 记一笔"
-        android:textColor="#1F2937"
-        android:textSize="14sp" />
+        android:gravity="center_vertical"
+        android:text="✏️ 记一笔…"
+        android:textColor="#9CA3AF"
+        android:textSize="15sp" />
 
     <TextView
         android:id="@+id/widget_record"
-        android:layout_width="0dp"
+        android:layout_width="wrap_content"
         android:layout_height="match_parent"
-        android:layout_weight="1"
         android:gravity="center"
-        android:text="🎙️ 说话"
-        android:textColor="#1F2937"
-        android:textSize="14sp" />
+        android:paddingLeft="14dp"
+        android:text="🎙️"
+        android:textSize="18sp" />
 </LinearLayout>

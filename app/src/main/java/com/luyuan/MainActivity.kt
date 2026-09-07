@@ -64,11 +64,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (routeFromIntent(intent) == "record") autoRoute = "record"
+        val r = routeFromIntent(intent)
+        if (r == "record" || r == "note") autoRoute = r
     }
 
-    private fun routeFromIntent(i: Intent?): String =
-        if (i?.getStringExtra("auto") == "record") "record" else "list"
+    private fun routeFromIntent(i: Intent?): String = when (i?.getStringExtra("auto")) {
+        "record" -> "record"
+        "note" -> "note"
+        else -> "list"
+    }
 }
 
 /** 三页横滑：日记(负一屏) ← 记事(主页) → 人脉(第二屏)，底部栏点选与手势互通（与 PC 面板同构） */
@@ -83,10 +87,17 @@ fun AppRoot(startDest: String) {
     val pagerState = rememberPagerState(initialPage = 1) { 3 }
 
     LaunchedEffect(startDest) {
-        if (startDest == "record") {
-            // 快捷磁贴/音量键/小部件唤起：直接开「录音待转写」（系统识别通道已移除）
-            vm.startWavRecording()
-            nav.navigate("record") { launchSingleTop = true }
+        when (startDest) {
+            "record" -> {
+                // 快捷磁贴/音量键/小部件唤起：直接开「录音待转写」（系统识别通道已移除）
+                vm.startWavRecording()
+                nav.navigate("record") { launchSingleTop = true }
+            }
+            "note" -> {
+                // 桌面小部件「记一笔」：确保落在主页输入框并弹键盘
+                pagerState.scrollToPage(1)
+                vm.requestDraftFocus()
+            }
         }
     }
 
