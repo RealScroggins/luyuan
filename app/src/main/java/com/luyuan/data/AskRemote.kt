@@ -2,6 +2,7 @@ package com.luyuan.data
 
 import android.content.Context
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
@@ -142,7 +143,7 @@ object AskRemote {
     ): String {
         if (!config.ready) throw IllegalStateException("还没填 API Key，去设置页填一个")
 
-        val userContent: kotlinx.serialization.JsonElement =
+        val userContent: JsonElement =
             if (images.isEmpty()) {
                 kotlinx.serialization.json.JsonPrimitive(question)
             } else {
