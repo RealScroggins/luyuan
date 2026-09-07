@@ -2,8 +2,9 @@
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes=""
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagRequestFilterKeyEvents"
+    android:accessibilityFlags="flagRequestFilterKeyEvents|flagRetrieveInteractiveWindows"
     android:canRequestFilterKeyEvents="true"
     android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
     android:notificationTimeout="100"
     android:description="@string/volume_service_desc" />

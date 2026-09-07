@@ -12,8 +12,8 @@ android {
         applicationId = "com.luyuan"
         minSdk = 24
         targetSdk = 34
-        versionCode = 24
-        versionName = "1.6.0"
+        versionCode = 25
+        versionName = "1.6.1"
         // 离线识别（sherpa-onnx）jniLib 只带 arm64（用户真机为 arm64，控制 APK 体积）
         ndk {
             abiFilters += "arm64-v8a"
@@ -90,4 +90,6 @@ dependencies {
     // 日记配图加载（本地文件 + SVG 贴纸）
     implementation("io.coil-kt:coil-compose:2.6.0")
     implementation("io.coil-kt:coil-svg:2.6.0")
+    // 分享网址抓正文（微信文章等）：HTML 解析
+    implementation("org.jsoup:jsoup:1.17.2")
 }

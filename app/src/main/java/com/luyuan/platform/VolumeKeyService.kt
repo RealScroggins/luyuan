@@ -68,22 +68,40 @@ class VolumeKeyService : AccessibilityService() {
         private var instance: VolumeKeyService? = null
 
         /**
-         * 「双麦克风」之二：对屏幕底部中央做一次长按手势，代替手指长按键盘空格
-         * （vivo 输入法空格长按=讯飞语音输入）。需要无障碍服务已开启 + canPerformGestures。
-         * 手势坐标是估算（键盘布局不公开），失败返回 false，由调用方提示手动长按。
+         * 「双麦克风」之二：对键盘空格键做一次长按手势，代替手指长按空格
+         * （vivo 输入法空格长按=讯飞语音输入）。需要无障碍服务已开启。
+         * 定位：优先读输入法窗口的真实边界（空格在底排中央 ≈ 键盘高度 84%），
+         * 读不到再退回屏幕比例估算。长按 1.5 秒触发。
          */
         fun spaceLongPress(): Boolean {
             val svc = instance ?: return false
             return try {
                 val m = android.content.res.Resources.getSystem().displayMetrics
-                val x = m.widthPixels * 0.5f
-                val y = m.heightPixels * 0.935f // 键盘末排中央（空格键大致位置）
+                var x = m.widthPixels * 0.5f
+                var y = m.heightPixels * 0.88f
+                try {
+                    var ime: android.graphics.Rect? = null
+                    for (w in svc.windows) {
+                        if (w.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD) {
+                            ime = android.graphics.Rect()
+                            w.getBoundsInScreen(ime)
+                            break
+                        }
+                    }
+                    ime?.let { r ->
+                        if (r.height() > 200) {
+                            x = r.exactCenterX()
+                            y = r.top + r.height() * 0.84f
+                        }
+                    }
+                } catch (_: Exception) {
+                }
                 val path = android.graphics.Path().apply {
                     moveTo(x, y)
                     lineTo(x, y)
                 }
                 val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(
-                    path, 0, 550
+                    path, 0, 1500
                 )
                 val gesture = android.accessibilityservice.GestureDescription.Builder()
                     .addStroke(stroke)

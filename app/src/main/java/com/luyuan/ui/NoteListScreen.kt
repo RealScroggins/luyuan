@@ -92,13 +92,18 @@ import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
 /** 自实现下拉刷新：列表到顶继续下拉累计 overPull，松手超过阈值触发刷新。
- *  不用任何 pullrefresh 库 API——不同 compose/material 版本签名差异太大，CI 连败两次的教训。 */
+ *  不用任何 pullrefresh 库 API——不同 compose/material 版本签名差异太大，CI 连败两次的教训。
+ *  刷新资格（用户口径）：本手势中途若滚过列表（consumed.y>0）→ 只给跟手皮筋不触发刷新；
+ *  快速滚到顶的惯性余量（Fling）一律不参与；必须顶端静止后新起一次下滑才刷新。 */
 private class PullRefreshConnection(
     private val thresholdPx: Float,
     private val onRefresh: () -> Unit
 ) : NestedScrollConnection {
     var overPull by mutableFloatStateOf(0f)
         private set
+
+    private var sawListScroll = false
+    private var lastCall = 0L
 
     override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
         // 手指上滑时先把拉出的距离收回去，收完才放行给列表滚动
@@ -111,8 +116,20 @@ private class PullRefreshConnection(
     }
 
     override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-        // 列表到顶后仍往下拉的部分 → 计入下拉距离（带阻尼，拉不远）
-        if (available.y > 0f) {
+        val now = System.currentTimeMillis()
+        if (now - lastCall > 300) sawListScroll = false // 与上帧间隔久 = 新的一次触摸
+        lastCall = now
+        if (source != NestedScrollSource.Drag) {
+            // 惯性滚动冲到顶的余量：既不拉皮筋也不触发刷新
+            return Offset.Zero
+        }
+        if (consumed.y > 0f) {
+            // 本手势还在滚列表（没到顶）→ 取消刷新资格，之后到顶只剩跟手皮筋
+            sawListScroll = true
+            return Offset.Zero
+        }
+        if (available.y > 0f && !sawListScroll) {
+            // 已在顶端、且本手势是从顶端开始的刻意下拖 → 皮筋跟手
             overPull = (overPull + available.y * 0.5f).coerceAtMost(thresholdPx * 1.25f)
             return Offset(0f, available.y)
         }
@@ -120,12 +137,13 @@ private class PullRefreshConnection(
     }
 
     override suspend fun onPreFling(available: Velocity): Velocity {
-        if (overPull >= thresholdPx) {
+        if (!sawListScroll && overPull >= thresholdPx) {
             overPull = thresholdPx // 触发后停在标准位置，刷新完成由 refreshDone 收回
             onRefresh()
         } else {
             overPull = 0f // 没拉到阈值也立刻弹回，不用手动收
         }
+        sawListScroll = true // 手势结束，下个手势靠 300ms 间隔判定重置
         return Velocity.Zero
     }
 
@@ -496,6 +514,7 @@ fun NoteListScreen(
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize()
+                        .offset { IntOffset(0, overPull.roundToInt()) } // 皮筋跟手：顶端下拖时整列随指下移
                         .padding(horizontal = 12.dp)
                         .padding(top = 4.dp)
                 ) {
