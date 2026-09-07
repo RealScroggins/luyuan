@@ -249,7 +249,8 @@ object NoteRepository {
     fun createManual(
         context: Context,
         text: String,
-        tags: List<String> = emptyList()
+        tags: List<String> = emptyList(),
+        images: List<String> = emptyList()
     ): Note {
         val now = nowIso()
         val note = Note(
@@ -259,6 +260,7 @@ object NoteRepository {
             text = text,
             source = "manual",
             tags = tags,
+            images = images,
             device = SyncPolicy.DEVICE_PHONE,
             schema = SyncPolicy.SCHEMA_VERSION
         )

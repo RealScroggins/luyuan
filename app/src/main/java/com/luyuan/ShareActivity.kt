@@ -19,7 +19,22 @@ class ShareActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val text = if (intent?.action == Intent.ACTION_SEND) {
+        val action = intent?.action
+        val type = intent?.type.orEmpty()
+        // 图片分享（v1.13）：单图/多图 → 压缩进 images/ → 带配图落一条新笔记
+        if (action == Intent.ACTION_SEND && type.startsWith("image/")) {
+            @Suppress("DEPRECATION")
+            val uri = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+            handleImages(if (uri != null) listOf(uri) else emptyList())
+            return
+        }
+        if (action == Intent.ACTION_SEND_MULTIPLE && type.startsWith("image/")) {
+            @Suppress("DEPRECATION")
+            val list = intent.getParcelableArrayListExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+            handleImages(list ?: emptyList())
+            return
+        }
+        val text = if (action == Intent.ACTION_SEND) {
             intent.getStringExtra(Intent.EXTRA_TEXT)
         } else null
         val body = text?.trim().orEmpty()
@@ -45,6 +60,43 @@ class ShareActivity : Activity() {
             val ctx = applicationContext
             Thread { fetchArticleInto(ctx, savedId, body, url) }.start()
         }
+    }
+
+    /**
+     * 图片分享处理：全部压缩导入成功后建一条带配图的笔记（一次导入失败不影响其余）。
+     * 导入/落库走后台线程，toast+finish 回主线程。
+     */
+    private fun handleImages(uris: List<android.net.Uri>) {
+        if (uris.isEmpty()) {
+            Toast.makeText(this, "没有可保存的图片", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+        val ctx = applicationContext
+        Thread {
+            val rels = mutableListOf<String>()
+            for (u in uris) {
+                try {
+                    NoteRepository.importImage(ctx, u)?.let { rels.add(it) }
+                } catch (_: Exception) {
+                }
+            }
+            val msg: String = try {
+                if (rels.isEmpty()) {
+                    "图片导入失败"
+                } else {
+                    val text = if (rels.size == 1) "🖼 图片速记" else "🖼 图片速记（" + rels.size + " 张）"
+                    NoteRepository.createManual(ctx, text, tags = listOf("分享"), images = rels)
+                    "✅ 已存入路远（" + rels.size + " 张图）"
+                }
+            } catch (e: Exception) {
+                "保存失败：" + (e.message ?: "未知错误")
+            }
+            runOnUiThread {
+                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                finish()
+            }
+        }.start()
     }
 
     private fun fetchArticleInto(ctx: Context, noteId: String, original: String, url: String) {
