@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.luyuan.BuildConfig
 import com.luyuan.data.AskRemote
 import com.luyuan.data.NoteRepository
 import com.luyuan.platform.PermissionHelper
@@ -249,7 +250,7 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = 
 
             Text("关于", style = MaterialTheme.typography.titleMedium)
             Text(
-                "路远 安卓 App v1.3 · 去中心化本地记事\n数据按 SYNC_FORMAT 与电脑端双向同步（Syncthing）。\n语音识别走系统引擎（免费无密钥）；联系人来自共享目录 contacts/。",
+                "路远 安卓 App v${BuildConfig.VERSION_NAME} · 去中心化本地记事\n数据按 SYNC_FORMAT 与电脑端双向同步（Syncthing）。\n语音 = 录音待转写 / 离线识别 / 键盘三模式；联系人来自共享目录 contacts/。",
                 style = MaterialTheme.typography.labelSmall
             )
         }
