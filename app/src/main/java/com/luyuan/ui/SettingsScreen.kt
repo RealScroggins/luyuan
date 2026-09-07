@@ -248,6 +248,57 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = 
                 ) { Text("开始对话") }
             }
 
+            // ---------- vivo 保活指引（v1.12）：提醒/通知失灵的自查路径 ----------
+            var keepAliveOpen by remember { mutableStateOf(false) }
+            val am = remember {
+                context.getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
+            }
+            val exactOk = android.os.Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
+            Text(
+                if (keepAliveOpen) "📱 vivo 保活指引（点收起）▴" else "📱 vivo 保活指引（提醒不响看这里）▾",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.clickable { keepAliveOpen = !keepAliveOpen }
+            )
+            if (keepAliveOpen) {
+                if (!exactOk) {
+                    Text(
+                        "⚠️ 精确闹钟权限没开，提醒可能晚几分钟。点这里去开 →",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier
+                            .padding(top = 4.dp)
+                            .clickable {
+                                try {
+                                    context.startActivity(
+                                        android.content.Intent(
+                                            android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                                            android.net.Uri.parse("package:com.luyuan")
+                                        )
+                                    )
+                                } catch (_: Exception) {
+                                }
+                            }
+                    )
+                } else {
+                    Text(
+                        "✅ 精确闹钟权限已开，提醒准时。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                Text(
+                    "提醒/速记条不灵，多半是 vivo 杀了后台。四步设置一次就好：\n" +
+                        "1️⃣ 放行自启动：i管家 → 应用管理 → 路远 → 权限 → 开「自启动」\n" +
+                        "2️⃣ 允许后台耗电：设置 → 电池 → 后台高耗电 → 路远开\n" +
+                        "3️⃣ 后台加锁：多任务界面 → 路远卡片往下拉，出现 🔒\n" +
+                        "4️⃣ 允许通知：设置 → 通知与状态栏 → 通知管理 → 路远全开",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+
             Text("关于", style = MaterialTheme.typography.titleMedium)
             Text(
                 "路远 安卓 App v${BuildConfig.VERSION_NAME} · 去中心化本地记事\n数据按 SYNC_FORMAT 与电脑端双向同步（Syncthing）。\n语音 = 录音待转写 / 离线识别 / 键盘三模式；联系人来自共享目录 contacts/。",
