@@ -77,7 +77,7 @@ object AskRemote {
         }
         // 近期笔记摘录（最新在前，跳过私密）
         try {
-            val notes = NoteRepository.listNotes(context, limit = 80)
+            val notes = NoteRepository.listNotes(context)
                 .filter { PRIVATE_TAG !in it.tags }
                 .take(30)
             if (notes.isNotEmpty()) {
