@@ -17,7 +17,10 @@ data class ContactTodo(
     val id: String,
     val text: String,
     val done: Boolean = false,
-    val created_at: String = ""
+    val created_at: String = "",
+    // SYNC_FORMAT §8 可选字段（PC 端 09-06 已定义）：提醒时间 / 已弹标记，App 端 v1.11 起支持
+    val remind_at: String? = null,
+    val reminded: Boolean? = null
 )
 
 @Serializable
@@ -102,5 +105,55 @@ object ContactRepository {
             updated_at = NoteRepository.nowIso()
         )
         file.writeText(contactJson.encodeToString(Contact.serializer(), updated), Charsets.UTF_8)
+    }
+
+    /**
+     * 贪睡（对齐 PC 端 /todos/{tid}/snooze 口径）：提醒推后 hours 小时并复位已弹标记；
+     * hours=null = 取消提醒（remind_at 置空）。原地写回，Syncthing 同步回 PC。
+     */
+    fun snoozeTodo(context: Context, contactId: String, todoId: String, hours: Int?) {
+        val (file, c) = findFile(context, contactId) ?: return
+        val updated = c.copy(
+            todos = c.todos.map {
+                if (it.id == todoId) it.copy(
+                    remind_at = hours?.let { h ->
+                        java.time.OffsetDateTime.now().plusHours(h.toLong()).toString()
+                    },
+                    reminded = false
+                ) else it
+            },
+            updated_at = NoteRepository.nowIso()
+        )
+        file.writeText(contactJson.encodeToString(Contact.serializer(), updated), Charsets.UTF_8)
+    }
+
+    fun findContact(context: Context, contactId: String): Contact? =
+        findFile(context, contactId)?.second
+
+    /** 到点标记：reminded=true 写回（防重复弹） */
+    fun markTodoReminded(context: Context, contactId: String, todoId: String) {
+        val (file, c) = findFile(context, contactId) ?: return
+        val updated = c.copy(
+            todos = c.todos.map {
+                if (it.id == todoId) it.copy(reminded = true) else it
+            },
+            updated_at = NoteRepository.nowIso()
+        )
+        file.writeText(contactJson.encodeToString(Contact.serializer(), updated), Charsets.UTF_8)
+    }
+
+    /** 未完成且带 remind_at 的待办（供提醒调度器挂闹钟），解析失败的时间跳过 */
+    fun pendingTodoReminders(context: Context): List<Pair<Contact, ContactTodo>> {
+        val out = mutableListOf<Pair<Contact, ContactTodo>>()
+        try {
+            for (c in listContacts(context)) {
+                for (t in c.todos) {
+                    if (t.done || t.remind_at.isNullOrBlank() || t.reminded == true) continue
+                    out.add(c to t)
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return out
     }
 }

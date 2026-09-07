@@ -200,6 +200,16 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** 待办贪睡（v1.11）：hours=null=取消提醒；写回后刷新列表并重排闹钟 */
+    fun snoozeContactTodo(contactId: String, todoId: String, hours: Int?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            ContactRepository.snoozeTodo(ctx, contactId, todoId, hours)
+            ReminderScheduler.cancel(ctx, "ctodo_" + todoId)
+            ReminderScheduler.rescheduleAll(ctx)
+            _contacts.value = ContactRepository.listContacts(ctx)
+        }
+    }
+
     // ---------- 记事 / 日记 ----------
 
     fun addManual(text: String) {

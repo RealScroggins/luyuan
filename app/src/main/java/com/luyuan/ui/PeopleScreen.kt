@@ -3,8 +3,10 @@ package com.luyuan.ui
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.luyuan.data.Contact
+import com.luyuan.data.ContactTodo
 import kotlinx.coroutines.launch
 
 /** 第二屏 · 人脉：待办置顶红板 + 联系人字母索引 + 搜索，数据来自共享目录 contacts/ */
@@ -255,23 +258,29 @@ fun PeopleScreen(vm: LuyuanViewModel) {
         }
     }
 
-    detail?.let { c ->
+    detail?.let { picked ->
+        // contacts 刷新后跟随最新数据（贪睡/勾选后弹窗内即时反映）
+        val c = contacts.firstOrNull { it.id == picked.id } ?: picked
         ContactDetailDialog(
             contact = c,
             onDismiss = { detail = null },
-            onToggleTodo = { todoId -> vm.toggleContactTodo(c.id, todoId) }
+            onToggleTodo = { todoId -> vm.toggleContactTodo(c.id, todoId) },
+            onSnoozeTodo = { todoId, hours -> vm.snoozeContactTodo(c.id, todoId, hours) }
         )
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ContactDetailDialog(
     contact: Contact,
     onDismiss: () -> Unit,
-    onToggleTodo: (String) -> Unit
+    onToggleTodo: (String) -> Unit,
+    onSnoozeTodo: (String, Int?) -> Unit
 ) {
     val context = LocalContext.current
     val clipboard: ClipboardManager = LocalClipboardManager.current
+    var snoozeTarget by remember { mutableStateOf<ContactTodo?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -369,20 +378,73 @@ private fun ContactDetailDialog(
                                 checked = t.done,
                                 onCheckedChange = { onToggleTodo(t.id) }
                             )
-                            Text(
-                                t.text,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                style = if (t.done) MaterialTheme.typography.bodyMedium.copy(
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                ) else MaterialTheme.typography.bodyMedium
-                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    t.text,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = if (t.done) MaterialTheme.typography.bodyMedium.copy(
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    ) else MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.combinedClickable(
+                                        onClick = {},
+                                        onLongClick = { if (!t.done) snoozeTarget = t }
+                                    )
+                                )
+                                if (!t.done && !t.remind_at.isNullOrBlank()) {
+                                    Text(
+                                        "⏰ " + (t.remind_at ?: "").take(16).replace('T', ' '),
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            if (!t.done) {
+                                Text(
+                                    "贪睡",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .clickable { snoozeTarget = t }
+                                        .padding(start = 8.dp)
+                                )
+                            }
                         }
                     }
                 }
             }
         }
     )
+
+    // 贪睡弹窗（v1.11）：推后 1/3 小时或取消提醒
+    snoozeTarget?.let { t ->
+        AlertDialog(
+            onDismissRequest = { snoozeTarget = null },
+            title = { Text("提醒设置", fontWeight = FontWeight.Bold) },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { snoozeTarget = null }) { Text("算了") }
+            },
+            text = {
+                Column {
+                    Text(
+                        "「${t.text.take(14)}${if (t.text.length > 14) "…" else ""}」",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    TextButton(onClick = { onSnoozeTodo(t.id, 1); snoozeTarget = null }) {
+                        Text("⏰ 1 小时后提醒")
+                    }
+                    TextButton(onClick = { onSnoozeTodo(t.id, 3); snoozeTarget = null }) {
+                        Text("⏰ 3 小时后提醒")
+                    }
+                    TextButton(onClick = { onSnoozeTodo(t.id, null); snoozeTarget = null }) {
+                        Text("🚫 取消提醒")
+                    }
+                }
+            }
+        )
+    }
 }
 
 @Composable

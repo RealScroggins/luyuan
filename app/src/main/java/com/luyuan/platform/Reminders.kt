@@ -12,6 +12,7 @@ import androidx.core.app.NotificationCompat
 import com.luyuan.MainActivity
 import com.luyuan.R
 import com.luyuan.domain.Note
+import com.luyuan.data.ContactRepository
 import com.luyuan.data.NoteRepository
 
 /** 系统通知：提醒用高优先级渠道，点了跳进 App */
@@ -90,6 +91,31 @@ object ReminderScheduler {
         for ((note, _) in overdue.take(10)) {
             fireReminder(context, note)
         }
+
+        // ---------- 联系人待办提醒（v1.11）：与笔记提醒同机制 ----------
+        val todoUpcoming = ContactRepository.pendingTodoReminders(context)
+            .mapNotNull { (c, t) -> parseTodoMillis(t.remind_at)?.let { Triple(c, t, it) } }
+            .filter { (_, _, at) -> at > now }
+            .sortedBy { (_, _, at) -> at }
+            .take(20)
+        for ((c, t, at) in todoUpcoming) {
+            val pi = todoAlarmIntent(context, c.id, t.id)
+            if (canExact(am)) {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+            } else {
+                am.setWindow(AlarmManager.RTC_WAKEUP, at, 10 * 60 * 1000L, pi)
+            }
+        }
+        // 过期待办补弹（PC 关机时到点/同步晚到），限 5 条防历史脏数据轰炸
+        val todoOverdue = ContactRepository.pendingTodoReminders(context)
+            .mapNotNull { (c, t) -> parseTodoMillis(t.remind_at)?.let { Triple(c, t, it) } }
+            .filter { (_, _, at) -> at <= now }
+            .sortedBy { (_, _, at) -> at }
+        for ((c, t, _) in todoOverdue.take(5)) {
+            if (t.done || t.reminded == true) continue
+            ReminderNotifications.fire(context, "ctodo_${t.id}", "⏰ ${c.name}的待办", t.text.take(200))
+            ContactRepository.markTodoReminded(context, c.id, t.id)
+        }
     }
 
     fun cancel(context: Context, noteId: String) {
@@ -108,11 +134,51 @@ object ReminderScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
     }
+
+    private fun todoAlarmIntent(context: Context, contactId: String, todoId: String): PendingIntent {
+        val intent = Intent(context, ReminderReceiver::class.java)
+            .putExtra("contact_todo_id", todoId)
+            .putExtra("contact_id", contactId)
+        return PendingIntent.getBroadcast(
+            context, ("ctodo_" + todoId).hashCode(), intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    /** ISO8601（带/不带时区）→ epoch 毫秒；解析失败返回 null */
+    private fun parseTodoMillis(s: String?): Long? {
+        if (s.isNullOrBlank()) return null
+        return try {
+            java.time.OffsetDateTime.parse(s).toInstant().toEpochMilli()
+        } catch (_: Exception) {
+            try {
+                java.time.LocalDateTime.parse(s)
+                    .atOffset(java.time.OffsetDateTime.now().offset)
+                    .toInstant().toEpochMilli()
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
 }
 
 /** 闹钟到点：响通知 → 标记已触发 → 排下一条 */
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        // 联系人待办提醒（v1.11）：note_id 缺省时看 contact_todo_id
+        val todoId = intent.getStringExtra("contact_todo_id")
+        if (todoId != null) {
+            val contactId = intent.getStringExtra("contact_id") ?: return
+            val c = ContactRepository.findContact(context, contactId) ?: return
+            val t = c.todos.firstOrNull { it.id == todoId } ?: return
+            if (t.done || t.reminded == true) return
+            ReminderNotifications.fire(
+                context, "ctodo_$todoId", "⏰ ${c.name}的待办", t.text.take(200)
+            )
+            ContactRepository.markTodoReminded(context, contactId, todoId)
+            ReminderScheduler.rescheduleAll(context)
+            return
+        }
         val id = intent.getStringExtra("note_id") ?: return
         val note = NoteRepository.findAny(context, id) ?: return
         if (note.deleted || note.remind_fired == true) return
