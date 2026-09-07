@@ -422,7 +422,7 @@ fun NoteListScreen(
                                     android.widget.Toast.makeText(
                                         context,
                                         "键盘弹出后请手动长按空格说话（或到设置开启无障碍服务代按）",
-                                        Toast.LENGTH_LONG
+                                        android.widget.Toast.LENGTH_LONG
                                     ).show()
                                 }
                             }

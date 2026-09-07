@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
@@ -71,6 +72,7 @@ class MainActivity : ComponentActivity() {
 }
 
 /** 三页横滑：日记(负一屏) ← 记事(主页) → 人脉(第二屏)，底部栏点选与手势互通（与 PC 面板同构） */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AppRoot(startDest: String) {
     val nav = rememberNavController()
