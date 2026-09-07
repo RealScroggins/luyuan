@@ -162,7 +162,14 @@ fun AppRoot(startDest: String) {
                 DetailEditScreen(vm = vm, noteId = id, onBack = { nav.popBackStack() })
             }
             composable("settings") {
-                SettingsScreen(vm = vm, onBack = { nav.popBackStack() })
+                SettingsScreen(
+                    vm = vm,
+                    onBack = { nav.popBackStack() },
+                    onAsk = { nav.navigate("ask") }
+                )
+            }
+            composable("ask") {
+                com.luyuan.ui.AskScreen(vm = vm, onBack = { nav.popBackStack() })
             }
             composable("trash") {
                 TrashScreen(vm = vm, onBack = { nav.popBackStack() })

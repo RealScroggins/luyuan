@@ -34,16 +34,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.luyuan.data.AskRemote
 import com.luyuan.data.NoteRepository
 import com.luyuan.platform.PermissionHelper
 import com.luyuan.platform.StorageLocator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** 设置页：共享目录防呆选择器（扫描候选点选，杜绝手打名字出错）+ 权限引导 */
+/** 设置页：共享目录防呆选择器（扫描候选点选，杜绝手打名字出错）+ 权限引导 + 问路远配置 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
+fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = {}) {
     val context = LocalContext.current
     val allFiles = PermissionHelper.hasAllFiles(context)
     val audio = PermissionHelper.hasAudio(context)
@@ -51,6 +52,13 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
     var currentPath by remember { mutableStateOf(StorageLocator.getRoot(context).absolutePath) }
     var candidates by remember { mutableStateOf(listOf<StorageLocator.Candidate>()) }
     var scanning by remember { mutableStateOf(false) }
+
+    // 问路远（A2）：Key 只存本机 App 私有目录（隐私红线，永不进同步目录/仓库）
+    val askCfg = remember { AskRemote.loadConfig(context) }
+    var askKey by remember { mutableStateOf(askCfg.key) }
+    var askBase by remember { mutableStateOf(askCfg.baseUrl) }
+    var askModel by remember { mutableStateOf(askCfg.model) }
+    var askSaved by remember { mutableStateOf(false) }
 
     suspend fun rescan() {
         scanning = true
@@ -203,6 +211,49 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            // ---------- 问路远（A2） ----------
+            Text("🤖 问路远（AI 问答）", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "填一次 OpenAI 兼容接口（默认 DeepSeek），就能随时用对话问它，回答会参考你本机的笔记和待办。" +
+                    "Key 只存本机 App 私有目录，不进同步目录；私密标签的笔记不会发出去。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            OutlinedTextField(
+                value = askKey,
+                onValueChange = { askKey = it; askSaved = false },
+                label = { Text("API Key") },
+                singleLine = true,
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = askBase,
+                    onValueChange = { askBase = it; askSaved = false },
+                    label = { Text("接口地址") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedTextField(
+                    value = askModel,
+                    onValueChange = { askModel = it; askSaved = false },
+                    label = { Text("模型") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+                Button(onClick = {
+                    AskRemote.saveConfig(context, askKey, askBase, askModel)
+                    askSaved = true
+                }) { Text(if (askSaved) "✅ 已保存" else "保存") }
+                Button(
+                    onClick = onAsk,
+                    enabled = AskRemote.loadConfig(context).ready || askKey.isNotBlank()
+                ) { Text("开始对话") }
+            }
 
             Text("关于", style = MaterialTheme.typography.titleMedium)
             Text(
