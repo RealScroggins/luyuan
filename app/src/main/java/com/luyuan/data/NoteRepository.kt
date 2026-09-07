@@ -3,7 +3,9 @@ package com.luyuan.data
 import android.content.Context
 import com.luyuan.domain.Note
 import com.luyuan.domain.SyncPolicy
+import com.luyuan.domain.noteJson
 import com.luyuan.platform.StorageLocator
+import kotlinx.serialization.json.jsonObject
 import java.io.File
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -266,13 +268,19 @@ object NoteRepository {
 
     private fun readNote(file: File): Note? = try {
         val raw = file.readText(Charsets.UTF_8)
-        val n = Note.fromJson(raw)
-        // 兼容兜底：缺字段补默认（updated_at 现已可缺省，这里统一补齐）
-        n.copy(
-            updated_at = if (n.updated_at.isBlank()) n.created_at else n.updated_at,
-            device = if (n.device.isBlank()) SyncPolicy.DEVICE_PC else n.device,
-            schema = if (n.schema == 0) SyncPolicy.SCHEMA_VERSION else n.schema
-        )
+        // SYNC_FORMAT v2 兼容（A1）：带 kind 字段的实体文件（contact/course/expense…）
+        // 一律安全跳过，绝不往笔记解析里塞——否则 PC 端新数据会把手机端搞坏
+        if (noteJson.parseToJsonElement(raw).jsonObject.containsKey("kind")) {
+            null
+        } else {
+            val n = Note.fromJson(raw)
+            // 兼容兜底：缺字段补默认（updated_at 现已可缺省，这里统一补齐）
+            n.copy(
+                updated_at = if (n.updated_at.isBlank()) n.created_at else n.updated_at,
+                device = if (n.device.isBlank()) SyncPolicy.DEVICE_PC else n.device,
+                schema = if (n.schema == 0) SyncPolicy.SCHEMA_VERSION else n.schema
+            )
+        }
     } catch (e: Exception) {
         null
     }

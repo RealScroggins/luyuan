@@ -75,7 +75,7 @@ fun PeopleScreen(vm: LuyuanViewModel) {
         else contacts.filter { it.name.contains(query.trim(), ignoreCase = true) }
     }
     val todoContacts = filtered.filter { it.undoneTodos.isNotEmpty() }
-    val grouped = remember(filtered) { filtered.groupBy { it.letter.ifBlank { "#" } }.toSortedMap() }
+    val grouped = remember(filtered) { filtered.groupBy { it.displayLetter }.toSortedMap() }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("人脉", fontWeight = FontWeight.Bold) }) }

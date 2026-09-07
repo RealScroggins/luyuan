@@ -19,9 +19,10 @@ class QuickWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         val views = RemoteViews(context.packageName, R.layout.widget_quick)
 
-        val notePi = PendingIntent.getActivity(
+        // 「记一笔」输入区：拉起悬浮速记条，在桌面上直接打字保存（不开 App）
+        val notePi = PendingIntent.getService(
             context, 3001,
-            Intent(context, MainActivity::class.java).putExtra("auto", "note"),
+            Intent(context, FloatingQuickNoteService::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val recPi = PendingIntent.getActivity(

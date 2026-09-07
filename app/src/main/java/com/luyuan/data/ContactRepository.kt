@@ -25,6 +25,9 @@ data class Contact(
     val id: String,
     val name: String,
     val letter: String = "",
+    // SYNC_FORMAT v2：PC 端写入的是 initial（后端 pypinyin 算好），
+    // letter 缺省时回退用它做字母分组（兼容 v1 的 letter）
+    val initial: String = "",
     val phone: String = "",
     val wechat: String = "",
     val qq: String = "",
@@ -35,6 +38,8 @@ data class Contact(
     val updated_at: String = ""
 ) {
     val undoneTodos: List<ContactTodo> get() = todos.filter { !it.done }
+    val displayLetter: String
+        get() = letter.ifBlank { initial.trim().uppercase().take(1) }.ifBlank { "#" }
 }
 
 val contactJson: Json = Json {

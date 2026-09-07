@@ -15,6 +15,8 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- 桌面小部件「记一笔」的悬浮速记条（桌面直接打字，不开 App） -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- 微信/QQ 跳转需要包可见性声明（Android 11+） -->
     <queries>
@@ -61,6 +63,11 @@
             android:name=".platform.LuyuanService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <!-- 桌面小部件「记一笔」的悬浮速记条 -->
+        <service
+            android:name=".platform.FloatingQuickNoteService"
+            android:exported="false" />
 
         <service
             android:name=".platform.QuickRecordTile"
