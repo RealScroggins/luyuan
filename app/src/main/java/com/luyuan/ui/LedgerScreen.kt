@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -81,7 +82,9 @@ fun LedgerScreen(vm: LuyuanViewModel, onAsk: () -> Unit, onTrash: () -> Unit) {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                containerColor = MaterialTheme.colorScheme.background,
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                ),
                 title = {
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text("记账", fontWeight = FontWeight.Bold)

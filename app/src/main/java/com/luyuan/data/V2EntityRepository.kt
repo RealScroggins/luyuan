@@ -57,8 +57,10 @@ object V2EntityRepository {
 
     private fun scan(context: Context, prefix: String): List<File> = try {
         val dir = File(StorageLocator.getRoot(context))
-        (dir.listFiles() ?: emptyArray())
-            .filter { it.isFile && it.name.startsWith(prefix, true) && !it.name.contains(".sync-conflict") }
+        val files: Array<File> = dir.listFiles() ?: emptyArray()
+        files.filter {
+            it.isFile && it.name.startsWith(prefix, true) && !it.name.contains(".sync-conflict")
+        }
     } catch (_: Exception) {
         emptyList()
     }
