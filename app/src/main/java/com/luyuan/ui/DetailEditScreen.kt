@@ -79,6 +79,9 @@ fun DetailEditScreen(
     var audioRel by remember { mutableStateOf<String?>(null) }
     var images by remember { mutableStateOf<List<String>>(emptyList()) }
     var viewingImage by remember { mutableStateOf<String?>(null) }
+    var createdAt by remember { mutableStateOf("") }
+    var source by remember { mutableStateOf("") }
+    var device by remember { mutableStateOf("") }
     var rawText by remember { mutableStateOf<String?>(null) }
     var showRaw by remember { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(false) }
@@ -98,6 +101,9 @@ fun DetailEditScreen(
                 remindAt = it.remind_at
                 audioRel = it.audio
                 images = it.images
+                createdAt = it.created_at
+                source = it.source
+                device = it.device
                 rawText = it.raw_text
                 loaded = true
             }
@@ -167,6 +173,22 @@ fun DetailEditScreen(
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // 元信息行：时间 + 来源/设备徽章
+                if (createdAt.isNotBlank()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            createdAt.take(16).replace("T", " "),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (source == "voice") MetaBadge("🎙 语音")
+                        if (tagsText.contains("分享")) MetaBadge("🔗 分享")
+                        if (device == "phone") MetaBadge("📱 手机")
+                    }
+                }
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
@@ -472,3 +494,15 @@ private fun isoInHours(h: Long): String =
 private fun isoTomorrowAt(hour: Int, minute: Int): String =
     LocalDate.now().plusDays(1).atTime(hour, minute)
         .atOffset(OffsetDateTime.now().offset).toString()
+
+@Composable
+private fun MetaBadge(text: String) {
+    Text(
+        text,
+        fontSize = 10.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(999.dp))
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+    )
+}

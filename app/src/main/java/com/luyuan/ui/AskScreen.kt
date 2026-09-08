@@ -86,6 +86,7 @@ fun AskScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
     var question by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var confirmClear by remember { mutableStateOf(false) }
 
     data class PendingImg(val bmp: Bitmap, val dataUrl: String)
     val pending = remember { mutableStateListOf<PendingImg>() }
@@ -150,9 +151,8 @@ fun AskScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                 },
                 actions = {
                     IconButton(onClick = {
-                        messages.clear()
-                        AskRemote.clearHistory(context)
-                        error = null
+                        // 历史已持久化（v1.10.0），误触清空损失变大——先确认
+                        if (messages.isNotEmpty()) confirmClear = true
                     }) {
                         Text("新对话", fontSize = 13.sp)
                     }
@@ -330,6 +330,25 @@ fun AskScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                 }
             }
         }
+    }
+
+    // 清空确认（历史持久化后误触损失变大）
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("清空这段对话？", fontWeight = FontWeight.Bold) },
+            text = { Text("历史会一并删除，不可恢复。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    messages.clear()
+                    AskRemote.clearHistory(context)
+                    confirmClear = false
+                }) { Text("清空", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClear = false }) { Text("算了") }
+            }
+        )
     }
 
     // ---------- 模型选择弹窗 ----------
