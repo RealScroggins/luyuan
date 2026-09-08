@@ -56,7 +56,7 @@ val v2Json: Json = Json {
 object V2EntityRepository {
 
     private fun scan(context: Context, prefix: String): List<File> = try {
-        val dir = File(StorageLocator.getRoot(context))
+        val dir: File = StorageLocator.getRoot(context)
         val files: Array<File> = dir.listFiles() ?: emptyArray()
         files.filter {
             it.isFile && it.name.startsWith(prefix, true) && !it.name.contains(".sync-conflict")
