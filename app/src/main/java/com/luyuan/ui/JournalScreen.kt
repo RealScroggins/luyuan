@@ -130,7 +130,12 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
         topBar = { TopAppBar(title = { Text("日记", fontWeight = FontWeight.Bold) }) }
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
+                .padding(bottom = 96.dp), // 避让悬浮胶囊（任务9：定时提醒开关此前被遮）
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Card(

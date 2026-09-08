@@ -110,6 +110,7 @@ fun AppRoot(startDest: String) {
     var showQuickInput by remember { mutableStateOf(false) }
     var searchMode by remember { mutableStateOf(false) }
     val searchQuery by vm.searchQuery.collectAsStateWithLifecycle()
+    val multiSelect by vm.multiSelect.collectAsStateWithLifecycle()
 
     LaunchedEffect(startDest) {
         when (startDest) {
@@ -225,8 +226,8 @@ fun AppRoot(startDest: String) {
                     TrashScreen(vm = vm, onBack = { nav.popBackStack() })
                 }
             }
-            // 悬浮终端胶囊（路河拍板：替代主页常驻输入框与搜索框，一框三用=输入/搜索/录音）
-            if (currentRoute == "home") {
+            // 悬浮终端胶囊（路河拍板：替代主页常驻输入框与搜索框，一框三用=输入/搜索/录音；多选时收起）
+            if (currentRoute == "home" && !multiSelect) {
                 TerminalCapsule(
                     searchMode = searchMode,
                     searchQuery = searchQuery,

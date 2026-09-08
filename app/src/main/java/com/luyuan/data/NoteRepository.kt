@@ -167,12 +167,14 @@ object NoteRepository {
         context: Context,
         id: String,
         text: String? = null,
-        tags: List<String>? = null
+        tags: List<String>? = null,
+        images: List<String>? = null
     ) {
         val existing = getNote(context, id) ?: return
         val updated = existing.copy(
             text = text ?: existing.text,
             tags = tags ?: existing.tags,
+            images = images ?: existing.images,
             updated_at = nowIso()
         )
         saveNote(context, updated)

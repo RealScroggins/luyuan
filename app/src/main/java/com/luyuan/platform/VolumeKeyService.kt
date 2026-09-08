@@ -8,14 +8,16 @@ import android.view.KeyEvent
 import com.luyuan.MainActivity
 
 /**
- * 实验性：双击「音量下键」直接开始录音。
- * 原理：无障碍服务全局监听按键（安卓唯一合法的全局按键通道，无需 adb）。
- * 注意：不消费按键——音量照常变化，只是多识别一次双击节奏。
+ * 无障碍服务全局按键监听（安卓唯一合法的全局按键通道，无需 adb）。
+ * 唤录音组合键（路河 2026-09-08 拍板）：**电源键 → 800ms 内按音量加**。
+ * 旧「双击音量减」已弃用（误触率高：长按调音量时系统连发 ACTION_DOWN 被当成双击）。
  * 后台拉起界面依赖「显示在其他应用上层」权限（Settings.canDrawOverlays）。
+ * ⚠️ 已知风险：部分 ROM 不把 KEYCODE_POWER 下发给第三方无障碍服务——若组合键无反应，
+ * 兜底方案=三连音量加（晨报已登记，等真机反馈）。
  */
 class VolumeKeyService : AccessibilityService() {
 
-    private var lastDownAt = 0L
+    private var lastPowerAt = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -30,18 +32,21 @@ class VolumeKeyService : AccessibilityService() {
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_DOWN &&
-            event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
-        ) {
-            val now = SystemClock.uptimeMillis()
-            if (now - lastDownAt < DOUBLE_PRESS_MS) {
-                lastDownAt = 0L
-                launchRecord()
-            } else {
-                lastDownAt = now
+        // 只认首次按下：长按的 repeat 连发不算（修"调音量误触"根因）
+        if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount > 0) return false
+        val now = SystemClock.uptimeMillis()
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_POWER -> lastPowerAt = now
+
+            KeyEvent.KEYCODE_VOLUME_UP -> {
+                if (now - lastPowerAt < COMBO_WINDOW_MS) {
+                    lastPowerAt = 0L
+                    launchRecord()
+                    return true // 组合成功，消费按键不让音量变
+                }
             }
         }
-        return false // 不消费：音量照常，只做双击识别
+        return false
     }
 
     private fun launchRecord() {
@@ -60,7 +65,8 @@ class VolumeKeyService : AccessibilityService() {
     override fun onInterrupt() {}
 
     companion object {
-        private const val DOUBLE_PRESS_MS = 600L
+        /** 电源键按下后在此窗口内按音量加=唤录音 */
+        private const val COMBO_WINDOW_MS = 800L
         var running = false
             private set
 

@@ -293,6 +293,8 @@ fun NoteListScreen(
     val query by vm.searchQuery.collectAsStateWithLifecycle()
     var selecting by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(setOf<String>()) }
+    // 多选状态上报 VM（路河拍板：多选时 MainActivity 收起悬浮胶囊）
+    LaunchedEffect(selecting) { vm.setMultiSelect(selecting) }
     val context = LocalContext.current
     val allFilesGranted = PermissionHelper.hasAllFiles(context)
     val scope = rememberCoroutineScope()

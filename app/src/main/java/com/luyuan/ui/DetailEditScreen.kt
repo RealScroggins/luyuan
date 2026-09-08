@@ -1,12 +1,20 @@
 package com.luyuan.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
@@ -30,11 +38,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.luyuan.data.NoteRepository
+import com.luyuan.platform.StorageLocator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -53,6 +67,8 @@ fun DetailEditScreen(
     var tagsText by remember { mutableStateOf("") }
     var remindAt by remember { mutableStateOf<String?>(null) }
     var audioRel by remember { mutableStateOf<String?>(null) }
+    var images by remember { mutableStateOf<List<String>>(emptyList()) }
+    var viewingImage by remember { mutableStateOf<String?>(null) }
     var rawText by remember { mutableStateOf<String?>(null) }
     var showRaw by remember { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(false) }
@@ -71,6 +87,7 @@ fun DetailEditScreen(
                 tagsText = it.tags.joinToString(", ")
                 remindAt = it.remind_at
                 audioRel = it.audio
+                images = it.images
                 rawText = it.raw_text
                 loaded = true
             }
@@ -105,6 +122,44 @@ fun DetailEditScreen(
                 modifier = Modifier.fillMaxWidth().fillMaxHeight(0.68f),
                 singleLine = false
             )
+
+            // 配图（图片分享/日记配图共用 images/；P0 修复：详情页此前从未渲染 images 字段）
+            if (images.isNotEmpty()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                ) {
+                    for (rel in images) {
+                        Box {
+                            AsyncImage(
+                                model = java.io.File(StorageLocator.getRoot(context), rel),
+                                contentDescription = "配图",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(84.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { viewingImage = rel }
+                            )
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(4.dp)
+                                    .size(20.dp)
+                                    .background(Color(0x88000000), CircleShape)
+                                    .clickable {
+                                        images = images - rel
+                                        vm.updateNote(noteId, text, tagsText.split(",").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }, images)
+                                    }
+                            ) {
+                                Text("✕", color = Color.White, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            }
 
             // 原声回放：录音待转写/离线识别的笔记可直接听（audio/<id>.wav 在共享目录）
             audioRel?.let { rel ->
@@ -230,6 +285,24 @@ fun DetailEditScreen(
                 }) { Text("保存") }
             }
         }
+    }
+
+    // 配图大图查看
+    viewingImage?.let { rel ->
+        AlertDialog(
+            onDismissRequest = { viewingImage = null },
+            title = { Text("配图", fontWeight = FontWeight.Bold) },
+            confirmButton = {
+                TextButton(onClick = { viewingImage = null }) { Text("关闭") }
+            },
+            text = {
+                AsyncImage(
+                    model = java.io.File(StorageLocator.getRoot(context), rel),
+                    contentDescription = "配图大图",
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        )
     }
 
     if (showDelete) {

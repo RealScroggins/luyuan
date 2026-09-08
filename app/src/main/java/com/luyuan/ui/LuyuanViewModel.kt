@@ -69,6 +69,14 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         _searchQuery.value = q
     }
 
+    /** 笔记页多选模式（路河拍板：多选时收起悬浮胶囊，防遮挡批量操作区） */
+    private val _multiSelect = MutableStateFlow(false)
+    val multiSelect: StateFlow<Boolean> = _multiSelect
+
+    fun setMultiSelect(on: Boolean) {
+        _multiSelect.value = on
+    }
+
     fun requestDraftFocus() {
         _focusDraft.value += 1
     }
@@ -259,9 +267,9 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun updateNote(id: String, text: String, tags: List<String> = emptyList()) {
+    fun updateNote(id: String, text: String, tags: List<String> = emptyList(), images: List<String>? = null) {
         viewModelScope.launch(Dispatchers.IO) {
-            NoteRepository.updateNote(ctx, id, text = text, tags = tags)
+            NoteRepository.updateNote(ctx, id, text = text, tags = tags, images = images)
             refresh()
         }
     }

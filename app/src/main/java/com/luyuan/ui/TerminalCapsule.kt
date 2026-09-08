@@ -141,8 +141,10 @@ fun TerminalCapsule(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QuickInputSheet(vm: LuyuanViewModel, onDismiss: () -> Unit) {
-    var text by remember { mutableStateOf("") }
+    // 草稿实时缓存（任务单 P0-2）：关浮层/切走/杀进程都不丢，保存成功即清
     val context = LocalContext.current
+    val draftPrefs = remember { context.getSharedPreferences("luyuan_prefs", android.content.Context.MODE_PRIVATE) }
+    var text by remember { mutableStateOf(draftPrefs.getString("terminal_draft", "") ?: "") }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -158,7 +160,10 @@ fun QuickInputSheet(vm: LuyuanViewModel, onDismiss: () -> Unit) {
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = text,
-                onValueChange = { text = it },
+                onValueChange = {
+                    text = it
+                    draftPrefs.edit().putString("terminal_draft", it).apply()
+                },
                 placeholder = { Text("想到什么写什么，保存后自动同步电脑", color = LuyuanColors.Ink3) },
                 maxLines = 4,
                 modifier = Modifier.fillMaxWidth()
@@ -169,6 +174,7 @@ fun QuickInputSheet(vm: LuyuanViewModel, onDismiss: () -> Unit) {
                     val t = text.trim()
                     if (t.isNotBlank()) {
                         vm.addManual(t)
+                        draftPrefs.edit().remove("terminal_draft").apply()
                         Toast.makeText(context, "✅ 已存为笔记", Toast.LENGTH_SHORT).show()
                         onDismiss()
                     }

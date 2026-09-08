@@ -70,6 +70,19 @@ fun TrashScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
                     }
+                },
+                actions = {
+                    // 路河拍板：顶部常驻多选/全选入口，不用先勾选才出现
+                    if (trash.isNotEmpty()) {
+                        TextButton(
+                            onClick = {
+                                selected =
+                                    if (selected.size == trash.size) emptySet() else trash.map { it.id }.toSet()
+                            }
+                        ) {
+                            Text(if (selected.size == trash.size) "取消全选" else "全选")
+                        }
+                    }
                 }
             )
         },

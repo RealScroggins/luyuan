@@ -170,7 +170,7 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = 
                 }) { Text("去开启所有文件访问") }
             }
 
-            // 实验性：双击音量下键直接录音（无障碍服务全局监听，不需要 adb）
+            // 实体键快捷：电源键+音量加 唤录音（无障碍服务全局监听，不需要 adb）
             val volumeServiceOn = remember {
                 android.provider.Settings.Secure.getString(
                     context.contentResolver,
@@ -182,7 +182,7 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = 
             }
             Text("实体键快捷（实验性）", style = MaterialTheme.typography.titleMedium)
             Text(
-                "双击音量下键 = 直接开始录音。需开启两处：①无障碍里的「路远·双击音量下键录音」（状态：${if (volumeServiceOn) "已开启" else "未开启"}）；②「显示在其他应用上层」（状态：${if (overlayOn) "已授权" else "未授权"}）。不拦截音量本身，双击时音量也会正常降低。若被 vivo 后台清理，请在管家里允许路远自启动并锁定后台。",
+                "先按电源键，800ms 内按音量加 = 直接开始录音（录完回电脑转文字，不用本地模型）。需开启两处：①无障碍里的「路远·组合键录音」（状态：${if (volumeServiceOn) "已开启" else "未开启"}）；②「显示在其他应用上层」（状态：${if (overlayOn) "已授权" else "未授权"}）。组合成功时不会改变音量。若组合键没反应（个别机型不向第三方下发电源键事件）或被 vivo 后台清理：请在管家里允许路远自启动并锁定后台，然后反馈给路远换兜底方案。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
