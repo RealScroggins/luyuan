@@ -45,7 +45,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.luyuan.data.Expense
 import com.luyuan.ui.CountUpText
 import com.luyuan.ui.LuyuanMotion
-import com.luyuan.ui.pressScale
+import com.luyuan.ui.rememberPressScale
+import androidx.compose.ui.graphics.graphicsLayer
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -133,6 +134,7 @@ fun LedgerScreen(vm: LuyuanViewModel, onAsk: () -> Unit, onTrash: () -> Unit) {
                         for (m in months) {
                             val selected = m == month
                             val chipSrc = remember { MutableInteractionSource() }
+                            val chipScale = rememberPressScale(chipSrc)
                             Text(
                                 "${m.monthValue}月",
                                 fontSize = 13.sp,
@@ -146,7 +148,7 @@ fun LedgerScreen(vm: LuyuanViewModel, onAsk: () -> Unit, onTrash: () -> Unit) {
                                         RoundedCornerShape(999.dp)
                                     )
                                     .padding(horizontal = 16.dp, vertical = 7.dp)
-                                    .pressScale(chipSrc)
+                                    .graphicsLayer { scaleX = chipScale; scaleY = chipScale }
                             )
                         }
                     }

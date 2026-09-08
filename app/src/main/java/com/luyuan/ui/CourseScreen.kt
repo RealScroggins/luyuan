@@ -40,7 +40,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.luyuan.data.Course
 import com.luyuan.ui.CountUpText
-import com.luyuan.ui.pressScale
+import com.luyuan.ui.rememberPressScale
+import androidx.compose.ui.graphics.graphicsLayer
 import kotlin.math.roundToInt
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -172,6 +173,7 @@ fun CourseScreen(vm: LuyuanViewModel, onAsk: () -> Unit, onTrash: () -> Unit) {
                         val isToday = d == today
                         val selected = i == selectedDay
                         val daySrc = remember { MutableInteractionSource() }
+                        val dayScale = rememberPressScale(daySrc)
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
@@ -186,7 +188,7 @@ fun CourseScreen(vm: LuyuanViewModel, onAsk: () -> Unit, onTrash: () -> Unit) {
                                     RoundedCornerShape(12.dp)
                                 )
                                 .padding(vertical = 8.dp)
-                                .pressScale(daySrc)
+                                .graphicsLayer { scaleX = dayScale; scaleY = dayScale }
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(

@@ -10,7 +10,6 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.composed
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -72,10 +71,18 @@ fun rememberReduceMotion(): Boolean {
  * - 不传则自建 source（仅用于无点击但需按压缩放的装饰元素）。
  * 尊重「减少动画」：开启时跳过缩放。
  */
-fun Modifier.pressScale(
+/**
+ * 按压缩放：返回当前 scale（1f / PressScale）。调用处用 Modifier.graphicsLayer 应用。
+ * - 传入已有 interactionSource：复用其按压事件（与组件自身 clickable / interactionSource 共用）。
+ * - 不传则自建 source，但无按压源时恒定 1f（纯装饰元素慎用）。
+ * 尊重「减少动画」：开启时恒定 1f。
+ * 注：返回 Float 而非 Modifier，规避新版 Compose 已移除的 composed 工厂。
+ */
+@Composable
+fun rememberPressScale(
     interactionSource: MutableInteractionSource? = null,
     scale: Float = LuyuanMotion.PressScale
-): Modifier = composed {
+): Float {
     val reduce = rememberReduceMotion()
     val src = interactionSource ?: remember { MutableInteractionSource() }
     val anim = remember { Animatable(1f) }
@@ -90,12 +97,7 @@ fun Modifier.pressScale(
             }
         }
     }
-    val g = this.graphicsLayer { scaleX = anim.value; scaleY = anim.value }
-    if (interactionSource == null) {
-        g.clickable(interactionSource = src, indication = null, onClick = {})
-    } else {
-        g
-    }
+    return anim.value
 }
 
 /**
