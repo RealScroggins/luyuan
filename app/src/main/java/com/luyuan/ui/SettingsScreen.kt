@@ -46,6 +46,7 @@ import com.luyuan.BuildConfig
 import com.luyuan.data.AskRemote
 import com.luyuan.data.NoteRepository
 import com.luyuan.platform.PermissionHelper
+import com.luyuan.platform.StorageLocator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 

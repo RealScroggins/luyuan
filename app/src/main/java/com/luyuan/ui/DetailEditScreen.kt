@@ -1,6 +1,7 @@
 package com.luyuan.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -9,17 +10,20 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -29,6 +33,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +60,11 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 
+/**
+ * 记事详情 v2（任务单 §一-8 基础重做）：方案 A 卡片语言——
+ * 📝 内容（编辑+配图）/ 🎙 原声 / 📜 原始识别 / 🏷 标签 / ⏰ 提醒 五张卡；保存按钮沉底主色。
+ * 逻辑与原版逐行等价（编辑保存/配图/播放/留底/提醒全链/删除/日期时间选择器）。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetailEditScreen(
@@ -95,8 +105,12 @@ fun DetailEditScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                ),
                 title = { Text("记事详情", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -109,77 +123,136 @@ fun DetailEditScreen(
                     }
                 }
             )
+        },
+        bottomBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.weight(1f)
+                ) { Text("取消") }
+                Button(
+                    onClick = {
+                        val tags = tagsText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                        vm.updateNote(noteId, text, tags)
+                        onBack()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    ),
+                    modifier = Modifier.weight(2f)
+                ) { Text("保存") }
+            }
         }
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                label = { Text("内容") },
-                modifier = Modifier.fillMaxWidth().fillMaxHeight(0.68f),
-                singleLine = false
-            )
-
-            // 配图（图片分享/日记配图共用 images/；P0 修复：详情页此前从未渲染 images 字段）
-            if (images.isNotEmpty()) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+            // ---------- 📝 内容卡 ----------
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("内容") },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                ) {
-                    for (rel in images) {
-                        Box {
-                            AsyncImage(
-                                model = java.io.File(StorageLocator.getRoot(context), rel),
-                                contentDescription = "配图",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .size(84.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .clickable { viewingImage = rel }
-                            )
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(4.dp)
-                                    .size(20.dp)
-                                    .background(Color(0x88000000), CircleShape)
-                                    .clickable {
-                                        images = images - rel
-                                        vm.updateNote(noteId, text, tagsText.split(",").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }, images)
-                                    }
-                            ) {
-                                Text("✕", color = Color.White, fontSize = 11.sp)
+                        .heightIn(min = 180.dp),
+                    singleLine = false
+                )
+
+                // 配图（图片分享/日记配图共用 images/；此前详情页从未渲染 images 字段，P0 已修）
+                if (images.isNotEmpty()) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                    ) {
+                        for (rel in images) {
+                            Box {
+                                AsyncImage(
+                                    model = java.io.File(StorageLocator.getRoot(context), rel),
+                                    contentDescription = "配图",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(84.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { viewingImage = rel }
+                                )
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(4.dp)
+                                        .size(20.dp)
+                                        .background(Color(0x88000000), CircleShape)
+                                        .clickable {
+                                            images = images - rel
+                                            val tags = tagsText.split(",").map { it.trim() }
+                                                .filter { it.isNotEmpty() }
+                                            vm.updateNote(noteId, text, tags, images)
+                                        }
+                                ) {
+                                    Text("✕", color = Color.White, fontSize = 11.sp)
+                                }
                             }
                         }
                     }
                 }
+
+                OutlinedTextField(
+                    value = tagsText,
+                    onValueChange = { tagsText = it },
+                    label = { Text("标签（逗号分隔，可选）") },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
 
-            // 原声回放：录音待转写/离线识别的笔记可直接听（audio/<id>.wav 在共享目录）
-            audioRel?.let { rel ->
-                val f = remember(rel) {
-                    java.io.File(com.luyuan.platform.StorageLocator.getRoot(context), rel)
-                }
-                if (f.exists()) {
-                    var playing by remember(rel) { mutableStateOf(false) }
-                    val player = remember(rel) {
-                        android.media.MediaPlayer().apply {
-                            setOnCompletionListener { playing = false }
-                        }
+            // ---------- 🎙 原声卡 ----------
+            if (audioRel != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("🎙 原声", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    val rel = audioRel!!
+                    val f = remember(rel) {
+                        java.io.File(StorageLocator.getRoot(context), rel)
                     }
-                    DisposableEffect(rel) {
-                        onDispose {
-                            try { if (player.isPlaying) player.stop() } catch (_: Exception) {}
-                            try { player.release() } catch (_: Exception) {}
+                    if (f.exists()) {
+                        var playing by remember(rel) { mutableStateOf(false) }
+                        val player = remember(rel) {
+                            android.media.MediaPlayer().apply {
+                                setOnCompletionListener { playing = false }
+                            }
                         }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        DisposableEffect(rel) {
+                            onDispose {
+                                try { if (player.isPlaying) player.stop() } catch (_: Exception) {}
+                                try { player.release() } catch (_: Exception) {}
+                            }
+                        }
                         AssistChip(
                             onClick = {
                                 try {
@@ -203,86 +276,93 @@ fun DetailEditScreen(
                             },
                             label = { Text(if (playing) "⏸ 暂停原声" else "▶ 播放原声") }
                         )
+                    } else {
+                        Text(
+                            "这条带原声录音（音频还没同步到手机）",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                } else {
-                    Text(
-                        "🎙 这条带原声录音（音频还没同步到手机）",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
 
-            // 原始识别留底：电脑纠错前的原稿，转写不准时可对照修正
+            // ---------- 📜 原始识别卡（电脑纠错前原稿，转写不准时可对照） ----------
             rawText?.takeIf { it.isNotBlank() && it != text }?.let { raw ->
-                AssistChip(
-                    onClick = { showRaw = !showRaw },
-                    label = { Text(if (showRaw) "🙈 收起原始识别" else "📜 看原始识别") }
-                )
-                if (showRaw) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("📜 原始识别", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    AssistChip(
+                        onClick = { showRaw = !showRaw },
+                        label = { Text(if (showRaw) "🙈 收起原稿" else "看电脑纠错前的原稿") }
+                    )
+                    if (showRaw) {
+                        Text(
+                            raw,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+
+            // ---------- ⏰ 提醒卡 ----------
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("⏰ 提醒", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Text(
-                        raw,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.fillMaxWidth()
+                        text = remindAt?.let { "已设 ${formatRemind(it)}" } ?: "未设置",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (remindAt != null) LuyuanColors.Green700 else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            }
-
-            OutlinedTextField(
-                value = tagsText,
-                onValueChange = { tagsText = it },
-                label = { Text("标签（逗号分隔，可选）") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            // 提醒：两端互通。这里设的到点手机响，电脑同步后也能看到
-            Text("提醒", style = MaterialTheme.typography.titleMedium)
-            Text(
-                text = remindAt?.let { "已设：${formatRemind(it)}" } ?: "未设置",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(onClick = {
-                    val iso = isoInHours(1)
-                    vm.setReminder(noteId, iso)
-                    remindAt = iso
-                }, label = { Text("+1小时") })
-                AssistChip(onClick = {
-                    val iso = isoInHours(3)
-                    vm.setReminder(noteId, iso)
-                    remindAt = iso
-                }, label = { Text("+3小时") })
-                AssistChip(onClick = {
-                    val iso = isoTomorrowAt(9, 0)
-                    vm.setReminder(noteId, iso)
-                    remindAt = iso
-                }, label = { Text("明早9点") })
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(onClick = {
-                    val now = LocalDateTime.now()
-                    val iso = isoTomorrowAt(now.hour, now.minute)
-                    vm.setReminder(noteId, iso)
-                    remindAt = iso
-                }, label = { Text("明天此时") })
-                AssistChip(onClick = { showDatePicker = true }, label = { Text("自定义时间…") })
-                if (remindAt != null) {
+                Text("这里设的到点手机响，电脑同步后也能看到。", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AssistChip(onClick = {
-                        vm.setReminder(noteId, null)
-                        remindAt = null
-                    }, label = { Text("取消提醒") })
+                        val iso = isoInHours(1)
+                        vm.setReminder(noteId, iso)
+                        remindAt = iso
+                    }, label = { Text("+1小时") })
+                    AssistChip(onClick = {
+                        val iso = isoInHours(3)
+                        vm.setReminder(noteId, iso)
+                        remindAt = iso
+                    }, label = { Text("+3小时") })
+                    AssistChip(onClick = {
+                        val iso = isoTomorrowAt(9, 0)
+                        vm.setReminder(noteId, iso)
+                        remindAt = iso
+                    }, label = { Text("明早9点") })
                 }
-            }
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onBack) { Text("取消") }
-                TextButton(onClick = {
-                    val tags = tagsText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                    vm.updateNote(noteId, text, tags)
-                    onBack()
-                }) { Text("保存") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AssistChip(onClick = {
+                        val now = LocalDateTime.now()
+                        val iso = isoTomorrowAt(now.hour, now.minute)
+                        vm.setReminder(noteId, iso)
+                        remindAt = iso
+                    }, label = { Text("明天此时") })
+                    AssistChip(onClick = { showDatePicker = true }, label = { Text("自定义时间…") })
+                    if (remindAt != null) {
+                        AssistChip(onClick = {
+                            vm.setReminder(noteId, null)
+                            remindAt = null
+                        }, label = { Text("取消提醒") })
+                    }
+                }
             }
         }
     }
