@@ -1,6 +1,9 @@
 package com.luyuan.ui
 
+import android.content.Context
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -24,26 +27,29 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.luyuan.BuildConfig
 import com.luyuan.data.AskRemote
 import com.luyuan.data.NoteRepository
 import com.luyuan.platform.PermissionHelper
-import com.luyuan.platform.StorageLocator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** 设置页：共享目录防呆选择器（扫描候选点选，杜绝手打名字出错）+ 权限引导 + 问路远配置 */
+/** 设置页 v2（路河拍板重排）：分区卡片化——📁目录/🔐权限/⌨️实体键/📚模型/🤖问路远/📱保活/ℹ️关于 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = {}) {
@@ -72,8 +78,12 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = 
     LaunchedEffect(Unit) { rescan() }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                ),
                 title = { Text("设置", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -88,221 +98,276 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = 
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("共享目录", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "当前：$currentPath",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            val curCount = candidates.firstOrNull { it.path == currentPath }?.count
-            if (curCount != null) {
+            // ---------- 📁 共享目录 ----------
+            SectionCard("📁 共享目录") {
                 Text(
-                    "此目录扫到 $curCount 条笔记。" +
-                            if (curCount == 0) "如果是 0，多半是选错目录或 Syncthing 还没同步。" else "",
+                    "当前：$currentPath",
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (curCount == 0) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                val curCount = candidates.firstOrNull { it.path == currentPath }?.count
+                if (curCount != null) {
+                    Text(
+                        "此目录扫到 $curCount 条笔记。" +
+                                if (curCount == 0) "如果是 0，多半是选错目录或 Syncthing 还没同步。" else "",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (curCount == 0) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Text("点选候选目录（按笔记数排序）：", style = MaterialTheme.typography.labelMedium)
+                for (c in candidates) {
+                    val selected = c.path == currentPath
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                StorageLocator.setRootName(context, c.path.substringAfterLast('/'))
+                                currentPath = c.path
+                                vm.refresh()
+                            },
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (selected) LuyuanColors.Green50
+                            else MaterialTheme.colorScheme.background
+                        ),
+                        border = BorderStroke(
+                            1.dp,
+                            if (selected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.outline
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                c.path.substringAfterLast('/') +
+                                        if (selected) "（当前）" else "",
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            Text(
+                                "${c.count} 条",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                if (scanning) {
+                    Text("扫描中…", style = MaterialTheme.typography.labelSmall)
+                }
+                Button(onClick = { vm.refresh() }) { Text("重新读取列表") }
+                Text(
+                    "注意：目录必须与 Syncthing App 里共享的文件夹完全一致（App 只负责读写，搬运交给 Syncthing）。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            Text("点选候选目录（按笔记数排序）：", style = MaterialTheme.typography.labelMedium)
-            for (c in candidates) {
-                val selected = c.path == currentPath
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            StorageLocator.setRootName(context, c.path.substringAfterLast('/'))
-                            currentPath = c.path
-                            vm.refresh()
-                        },
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (selected) MaterialTheme.colorScheme.surfaceVariant
-                        else MaterialTheme.colorScheme.surface
-                    ),
-                    border = BorderStroke(
-                        1.dp,
-                        if (selected) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.outline
-                    ),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            c.path.substringAfterLast('/') +
-                                    if (selected) "（当前）" else "",
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                        Text(
-                            "${c.count} 条",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+            // ---------- 🔐 权限 ----------
+            SectionCard("🔐 权限") {
+                Text("麦克风：${if (audio) "✅ 已授权" else "⚠️ 未授权"}", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "所有文件访问：${if (allFiles) "✅ 已授权" else "⚠️ 未授权（需在设置中开启，才能读写 Syncthing 共享目录）"}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                if (!allFiles) {
+                    Button(onClick = {
+                        context.startActivity(PermissionHelper.allFilesSettingsIntent())
+                    }) { Text("去开启所有文件访问") }
                 }
             }
-            if (scanning) {
-                Text("扫描中…", style = MaterialTheme.typography.labelSmall)
-            }
-            Button(onClick = { vm.refresh() }) { Text("重新读取列表") }
 
-            Text(
-                "注意：目录必须与 Syncthing App 里共享的文件夹完全一致（App 只负责读写，搬运交给 Syncthing）。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Text("权限", style = MaterialTheme.typography.titleMedium)
-            Text("麦克风：${if (audio) "已授权" else "未授权"}")
-            Text(
-                "所有文件访问：${if (allFiles) "已授权" else "未授权（需在设置中开启，才能读写 Syncthing 共享目录）"}"
-            )
-            if (!allFiles) {
-                Button(onClick = {
-                    context.startActivity(PermissionHelper.allFilesSettingsIntent())
-                }) { Text("去开启所有文件访问") }
-            }
-
-            // 实体键快捷：电源键+音量加 唤录音（无障碍服务全局监听，不需要 adb）
-            val volumeServiceOn = remember {
-                android.provider.Settings.Secure.getString(
-                    context.contentResolver,
-                    android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-                )?.contains("VolumeKeyService") == true
-            }
-            val overlayOn = remember {
-                android.provider.Settings.canDrawOverlays(context)
-            }
-            Text("实体键快捷（实验性）", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "先按电源键，800ms 内按音量加 = 直接开始录音（录完回电脑转文字，不用本地模型）。需开启两处：①无障碍里的「路远·组合键录音」（状态：${if (volumeServiceOn) "已开启" else "未开启"}）；②「显示在其他应用上层」（状态：${if (overlayOn) "已授权" else "未授权"}）。组合成功时不会改变音量。若组合键没反应（个别机型不向第三方下发电源键事件）或被 vivo 后台清理：请在管家里允许路远自启动并锁定后台，然后反馈给路远换兜底方案。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = {
-                    context.startActivity(
-                        android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                    )
-                }) { Text("去开无障碍") }
-                Button(onClick = {
-                    context.startActivity(
-                        android.content.Intent(
-                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            android.net.Uri.parse("package:com.luyuan")
+            // ---------- ⌨️ 实体键快捷 ----------
+            SectionCard("⌨️ 实体键快捷（实验性）") {
+                val volumeServiceOn = remember {
+                    android.provider.Settings.Secure.getString(
+                        context.contentResolver,
+                        android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                    )?.contains("VolumeKeyService") == true
+                }
+                val overlayOn = remember {
+                    android.provider.Settings.canDrawOverlays(context)
+                }
+                Text(
+                    "先按电源键，800ms 内按音量加 = 直接开始录音（录完回电脑转文字，不用本地模型）。",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    "①无障碍「路远·组合键录音」（状态：${if (volumeServiceOn) "✅ 已开启" else "⚠️ 未开启"}）\n" +
+                        "②「显示在其他应用上层」（状态：${if (overlayOn) "✅ 已授权" else "⚠️ 未授权"}）",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "组合成功时不会改变音量。若组合键没反应（个别机型不向第三方下发电源键事件）或被 vivo 后台清理：请到管家里允许路远自启动并锁定后台，然后反馈给路远换兜底方案。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        context.startActivity(
+                            android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
                         )
-                    )
-                }) { Text("去开悬浮层") }
+                    }) { Text("去开无障碍") }
+                    Button(onClick = {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                android.net.Uri.parse("package:com.luyuan")
+                            )
+                        )
+                    }) { Text("去开悬浮层") }
+                }
             }
 
-            Text("语音模型离线导入", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "在线下载慢？推荐免数据线的方式：\n" +
+            // ---------- 📚 语音模型离线导入 ----------
+            SectionCard("📚 语音模型离线导入") {
+                Text(
+                    "在线下载慢？推荐免数据线的方式：\n" +
                         "① 电脑把 vosk-model-small-cn-0.22.zip 放进共享文件夹的 model\\ 子目录（D:\\Luyuan\\data\\notes\\model\\）；\n" +
                         "② 等 Syncthing 同步到手机（AA 路远/model/）；\n" +
                         "③ 重启路远自动识别（zip 或解压后的文件夹都认）。\n" +
                         "备选：数据线把 zip 拷到手机「Download」文件夹也可以。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            // ---------- 问路远（A2） ----------
-            Text("🤖 问路远（AI 问答）", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "填一次 OpenAI 兼容接口（默认 DeepSeek），就能随时用对话问它，回答会参考你本机的笔记和待办。" +
-                    "Key 只存本机 App 私有目录，不进同步目录；私密标签的笔记不会发出去。" +
-                    "模型不在手填——在对话页顶部一键切换（快答/深思/视觉/Pro）。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            OutlinedTextField(
-                value = askKey,
-                onValueChange = { askKey = it; askSaved = false },
-                label = { Text("API Key") },
-                singleLine = true,
-                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = askBase,
-                onValueChange = { askBase = it; askSaved = false },
-                label = { Text("接口地址（默认 DeepSeek）") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-                Button(onClick = {
-                    AskRemote.saveConfig(context, askKey, askBase)
-                    askSaved = true
-                }) { Text(if (askSaved) "✅ 已保存" else "保存") }
-                Button(
-                    onClick = onAsk,
-                    enabled = AskRemote.loadConfig(context).ready || askKey.isNotBlank()
-                ) { Text("开始对话") }
-            }
-
-            // ---------- vivo 保活指引（v1.12）：提醒/通知失灵的自查路径 ----------
-            var keepAliveOpen by remember { mutableStateOf(false) }
-            val am = remember {
-                context.getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
-            }
-            val exactOk = android.os.Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
-            Text(
-                if (keepAliveOpen) "📱 vivo 保活指引（点收起）▴" else "📱 vivo 保活指引（提醒不响看这里）▾",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.clickable { keepAliveOpen = !keepAliveOpen }
-            )
-            if (keepAliveOpen) {
-                if (!exactOk) {
-                    Text(
-                        "⚠️ 精确闹钟权限没开，提醒可能晚几分钟。点这里去开 →",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier
-                            .padding(top = 4.dp)
-                            .clickable {
-                                try {
-                                    context.startActivity(
-                                        android.content.Intent(
-                                            android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
-                                            android.net.Uri.parse("package:com.luyuan")
-                                        )
-                                    )
-                                } catch (_: Exception) {
-                                }
-                            }
-                    )
-                } else {
-                    Text(
-                        "✅ 精确闹钟权限已开，提醒准时。",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-                Text(
-                    "提醒/速记条不灵，多半是 vivo 杀了后台。四步设置一次就好：\n" +
-                        "1️⃣ 放行自启动：i管家 → 应用管理 → 路远 → 权限 → 开「自启动」\n" +
-                        "2️⃣ 允许后台耗电：设置 → 电池 → 后台高耗电 → 路远开\n" +
-                        "3️⃣ 后台加锁：多任务界面 → 路远卡片往下拉，出现 🔒\n" +
-                        "4️⃣ 允许通知：设置 → 通知与状态栏 → 通知管理 → 路远全开",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            Text("关于", style = MaterialTheme.typography.titleMedium)
+            // ---------- 🤖 问路远（A2） ----------
+            SectionCard("🤖 问路远（AI 问答）") {
+                Text(
+                    "填一次 OpenAI 兼容接口（默认 DeepSeek），就能随时用对话问它，回答会参考你本机的笔记和待办。" +
+                        "Key 只存本机 App 私有目录，不进同步目录；私密标签的笔记不会发出去。" +
+                        "模型不在手填——在对话页顶部一键切换（快答/深思/视觉/Pro）。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = askKey,
+                    onValueChange = { askKey = it; askSaved = false },
+                    label = { Text("API Key") },
+                    singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = askBase,
+                    onValueChange = { askBase = it; askSaved = false },
+                    label = { Text("接口地址（默认 DeepSeek）") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+                    Button(onClick = {
+                        AskRemote.saveConfig(context, askKey, askBase)
+                        askSaved = true
+                    }) { Text(if (askSaved) "✅ 已保存" else "保存") }
+                    Button(
+                        onClick = onAsk,
+                        enabled = AskRemote.loadConfig(context).ready || askKey.isNotBlank()
+                    ) { Text("开始对话") }
+                }
+            }
+
+            // ---------- 📱 vivo 保活指引（v1.12）：提醒/通知失灵的自查路径 ----------
+            KeepAliveCard()
+
+            // ---------- ℹ️ 关于 ----------
+            SectionCard("ℹ️ 关于") {
+                Text(
+                    "路远 安卓 App v${BuildConfig.VERSION_NAME} · 去中心化本地记事\n" +
+                        "数据按 SYNC_FORMAT 与电脑端双向同步（Syncthing）。\n" +
+                        "语音 = 录音待转写 / 离线识别 / 键盘三模式；联系人来自共享目录 contacts/。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+/** 分区白卡：方案 A 卡片语言（纸白底/圆角16/淡描边） */
+@Composable
+private fun SectionCard(title: String, content: @Composable () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        content()
+    }
+}
+
+/** vivo 保活指引卡（可展开；精确闹钟权限检测 + 一键跳转） */
+@Composable
+private fun KeepAliveCard() {
+    val context = LocalContext.current
+    var keepAliveOpen by remember { mutableStateOf(false) }
+    val am = remember {
+        context.getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
+    }
+    val exactOk = android.os.Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            if (keepAliveOpen) "📱 vivo 保活指引（点收起）▴" else "📱 vivo 保活指引（提醒不响看这里）▾",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.clickable { keepAliveOpen = !keepAliveOpen }
+        )
+        if (keepAliveOpen) {
+            if (!exactOk) {
+                Text(
+                    "⚠️ 精确闹钟权限没开，提醒可能晚几分钟。点这里去开 →",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .clickable {
+                            try {
+                                context.startActivity(
+                                    android.content.Intent(
+                                        android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                                        android.net.Uri.parse("package:com.luyuan")
+                                    )
+                                )
+                            } catch (_: Exception) {
+                            }
+                        }
+                )
+            } else {
+                Text(
+                    "✅ 精确闹钟权限已开，提醒准时。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
             Text(
-                "路远 安卓 App v${BuildConfig.VERSION_NAME} · 去中心化本地记事\n数据按 SYNC_FORMAT 与电脑端双向同步（Syncthing）。\n语音 = 录音待转写 / 离线识别 / 键盘三模式；联系人来自共享目录 contacts/。",
-                style = MaterialTheme.typography.labelSmall
+                "提醒/速记条不灵，多半是 vivo 杀了后台。四步设置一次就好：\n" +
+                    "1️⃣ 放行自启动：i管家 → 应用管理 → 路远 → 权限 → 开「自启动」\n" +
+                    "2️⃣ 允许后台耗电：设置 → 电池 → 后台高耗电 → 路远开\n" +
+                    "3️⃣ 后台加锁：多任务界面 → 路远卡片往下拉，出现 🔒\n" +
+                    "4️⃣ 允许通知：设置 → 通知与状态栏 → 通知管理 → 路远全开",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
             )
         }
     }
