@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Notes
@@ -49,6 +50,7 @@ import com.luyuan.ui.LedgerScreen
 import com.luyuan.ui.LuyuanTheme
 import com.luyuan.ui.LuyuanViewModel
 import com.luyuan.ui.NoteListScreen
+import com.luyuan.ui.pressScale
 import com.luyuan.ui.PeopleScreen
 import com.luyuan.ui.QuickInputSheet
 import com.luyuan.ui.RecordScreen
@@ -102,6 +104,7 @@ fun AppRoot(startDest: String) {
     val currentRoute = backStackEntry?.destination?.route
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(initialPage = 0) { 5 }
+    val navInteraction = remember { MutableInteractionSource() }
     var showQuickInput by remember { mutableStateOf(false) }
     var searchMode by remember { mutableStateOf(false) }
     val searchQuery by vm.searchQuery.collectAsStateWithLifecycle()
@@ -134,16 +137,18 @@ fun AppRoot(startDest: String) {
                         Triple(4, "人脉", Icons.Default.People)
                     )
                     for ((page, label, icon) in tabs) {
-                        NavigationBarItem(
-                            selected = pagerState.currentPage == page,
-                            onClick = {
-                                if (pagerState.currentPage != page) {
-                                    scope.launch { pagerState.animateScrollToPage(page) }
-                                }
-                            },
-                            icon = { Icon(icon, contentDescription = label) },
-                            label = { Text(label) }
-                        )
+                    NavigationBarItem(
+                        selected = pagerState.currentPage == page,
+                        onClick = {
+                            if (pagerState.currentPage != page) {
+                                scope.launch { pagerState.animateScrollToPage(page) }
+                            }
+                        },
+                        icon = { Icon(icon, contentDescription = label) },
+                        label = { Text(label) },
+                        interactionSource = navInteraction,
+                        modifier = Modifier.pressScale(navInteraction)
+                    )
                     }
                 }
             }

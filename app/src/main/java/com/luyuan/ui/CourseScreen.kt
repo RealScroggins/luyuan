@@ -36,8 +36,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.luyuan.data.Course
+import com.luyuan.ui.CountUpText
+import com.luyuan.ui.pressScale
+import kotlin.math.roundToInt
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
@@ -148,10 +152,10 @@ fun CourseScreen(vm: LuyuanViewModel, onAsk: () -> Unit, onTrash: () -> Unit) {
                             )
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                "$mins",
-                                fontSize = 34.sp,
-                                fontWeight = FontWeight.Bold,
+                            CountUpText(
+                                target = mins.toDouble(),
+                                format = { it.roundToInt().toString() },
+                                style = androidx.compose.ui.text.TextStyle(fontSize = 34.sp, fontWeight = FontWeight.Bold),
                                 color = Color.White
                             )
                             Text("分钟后上课", fontSize = 11.sp, color = Color(0xFFCFE0D6))
@@ -167,11 +171,12 @@ fun CourseScreen(vm: LuyuanViewModel, onAsk: () -> Unit, onTrash: () -> Unit) {
                         val d = monday.plusDays((i - 1).toLong())
                         val isToday = d == today
                         val selected = i == selectedDay
+                        val daySrc = remember { MutableInteractionSource() }
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
                                 .weight(1f)
-                                .clickable { selectedDay = i }
+                                .clickable(interactionSource = daySrc, indication = null, onClick = { selectedDay = i })
                                 .background(
                                     when {
                                         selected -> MaterialTheme.colorScheme.primary
@@ -181,6 +186,7 @@ fun CourseScreen(vm: LuyuanViewModel, onAsk: () -> Unit, onTrash: () -> Unit) {
                                     RoundedCornerShape(12.dp)
                                 )
                                 .padding(vertical = 8.dp)
+                                .pressScale(daySrc)
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(

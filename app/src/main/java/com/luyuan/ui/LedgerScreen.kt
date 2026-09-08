@@ -38,8 +38,14 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.luyuan.data.Expense
+import com.luyuan.ui.CountUpText
+import com.luyuan.ui.LuyuanMotion
+import com.luyuan.ui.pressScale
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -126,19 +132,21 @@ fun LedgerScreen(vm: LuyuanViewModel, onAsk: () -> Unit, onTrash: () -> Unit) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for (m in months) {
                             val selected = m == month
+                            val chipSrc = remember { MutableInteractionSource() }
                             Text(
                                 "${m.monthValue}月",
                                 fontSize = 13.sp,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                                 color = if (selected) Color.White else LuyuanColors.Ink2,
                                 modifier = Modifier
-                                    .clickable { month = m }
+                                    .clickable(interactionSource = chipSrc, indication = null, onClick = { month = m })
                                     .background(
                                         if (selected) MaterialTheme.colorScheme.primary
                                         else MaterialTheme.colorScheme.surface,
                                         RoundedCornerShape(999.dp)
                                     )
                                     .padding(horizontal = 16.dp, vertical = 7.dp)
+                                    .pressScale(chipSrc)
                             )
                         }
                     }
@@ -165,10 +173,10 @@ fun LedgerScreen(vm: LuyuanViewModel, onAsk: () -> Unit, onTrash: () -> Unit) {
                         .padding(20.dp)
                 ) {
                     Text("本月支出", fontSize = 12.sp, color = Color(0xFFCFE0D6))
-                    Text(
-                        "¥" + fmtMoney(total),
-                        fontSize = 40.sp,
-                        fontWeight = FontWeight.Bold,
+                    CountUpText(
+                        target = total,
+                        format = { "¥" + fmtMoney(it) },
+                        style = androidx.compose.ui.text.TextStyle(fontSize = 40.sp, fontWeight = FontWeight.Bold),
                         color = Color.White
                     )
                     Text(
@@ -192,6 +200,10 @@ fun LedgerScreen(vm: LuyuanViewModel, onAsk: () -> Unit, onTrash: () -> Unit) {
                         Spacer(Modifier.height(10.dp))
                         for ((cat, sum) in byCat.take(5)) {
                             val frac = if (total > 0) (sum / total).toFloat() else 0f
+                            val fracAnim by animateFloatAsState(
+                                targetValue = frac,
+                                animationSpec = tween(LuyuanMotion.BarExpand, easing = LuyuanMotion.Flow)
+                            )
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.padding(vertical = 4.dp)
@@ -205,7 +217,7 @@ fun LedgerScreen(vm: LuyuanViewModel, onAsk: () -> Unit, onTrash: () -> Unit) {
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .fillMaxWidth(frac.coerceIn(0.02f, 1f))
+                                            .fillMaxWidth(fracAnim.coerceIn(0.02f, 1f))
                                             .height(6.dp)
                                             .background(
                                                 LuyuanColors.categoryColor(cat),
