@@ -26,6 +26,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -34,19 +36,23 @@ import androidx.compose.ui.unit.sp
 import android.widget.Toast
 
 /**
- * 悬浮超级终端胶囊（方案 A §二-2）：全 App 唯一录入口，常驻底栏上方。
+ * 悬浮超级终端胶囊（方案 A §二-2）：全 App 唯一录入口，悬浮在列表上方、底栏之上（路河拍板原稿样式）。
+ * 安卓没有 HTML backdrop-filter 等价物，玻璃感用「高透纸白渐变 + 大阴影 + 淡描边」近似（稿子本身 96% 不透明）。
  * B1 简版：点胶囊 = 底部输入浮层（存普通笔记）；点麦克风 = 开录音。
  * B3 升级：输入浮层接意图识别（确定性规则 → PC /api/terminal 确认卡）。
  */
 @Composable
-fun TerminalCapsule(onQuickInput: () -> Unit, onRecord: () -> Unit) {
+fun TerminalCapsule(onQuickInput: () -> Unit, onRecord: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 6.dp)
-            .background(Color(0xF7FFFFFF), RoundedCornerShape(999.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(999.dp))
+            .shadow(18.dp, RoundedCornerShape(999.dp), clip = false)
+            .background(
+                Brush.horizontalGradient(listOf(Color(0xF5FAF7F0), Color(0xE9FAF7F0))),
+                RoundedCornerShape(999.dp)
+            )
+            .border(1.dp, Color(0x1A224A3A), RoundedCornerShape(999.dp))
             .clickable { onQuickInput() }
             .padding(start = 18.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)
     ) {

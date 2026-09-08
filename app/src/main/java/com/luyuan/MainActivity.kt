@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -30,7 +31,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -119,103 +122,111 @@ fun AppRoot(startDest: String) {
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             if (currentRoute == "home") {
-                Column {
-                    // 唯一录入口（B1 简版：点=快速输入浮层，麦克风=录音；B3 接意图识别）
-                    TerminalCapsule(
-                        onQuickInput = { showQuickInput = true },
-                        onRecord = {
-                            vm.startWavRecording()
-                            nav.navigate("record") { launchSingleTop = true }
-                        }
+                NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
+                    val tabs = listOf(
+                        Triple(0, "笔记", Icons.AutoMirrored.Filled.Notes),
+                        Triple(1, "记账", Icons.Default.Payments),
+                        Triple(2, "课程", Icons.Default.CalendarMonth),
+                        Triple(3, "日记", Icons.Default.EditNote),
+                        Triple(4, "人脉", Icons.Default.People)
                     )
-                    NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
-                        val tabs = listOf(
-                            Triple(0, "笔记", Icons.AutoMirrored.Filled.Notes),
-                            Triple(1, "记账", Icons.Default.Payments),
-                            Triple(2, "课程", Icons.Default.CalendarMonth),
-                            Triple(3, "日记", Icons.Default.EditNote),
-                            Triple(4, "人脉", Icons.Default.People)
+                    for ((page, label, icon) in tabs) {
+                        NavigationBarItem(
+                            selected = pagerState.currentPage == page,
+                            onClick = {
+                                if (pagerState.currentPage != page) {
+                                    scope.launch { pagerState.animateScrollToPage(page) }
+                                }
+                            },
+                            icon = { Icon(icon, contentDescription = label) },
+                            label = { Text(label) }
                         )
-                        for ((page, label, icon) in tabs) {
-                            NavigationBarItem(
-                                selected = pagerState.currentPage == page,
-                                onClick = {
-                                    if (pagerState.currentPage != page) {
-                                        scope.launch { pagerState.animateScrollToPage(page) }
-                                    }
-                                },
-                                icon = { Icon(icon, contentDescription = label) },
-                                label = { Text(label) }
-                            )
-                        }
                     }
                 }
             }
         }
     ) { pad ->
-        NavHost(
-            navController = nav,
-            startDestination = "home",
-            modifier = Modifier.padding(pad)
+        Box(
+            modifier = Modifier
+                .padding(pad)
+                .fillMaxSize()
         ) {
-            composable("home") {
-                // beyondBounds=4：五页全部常驻，翻页不丢输入框草稿/搜索词/列表位置
-                HorizontalPager(
-                    state = pagerState,
-                    beyondBoundsPageCount = 4,
-                    modifier = Modifier.fillMaxSize()
-                ) { page ->
-                    when (page) {
-                        0 -> NoteListScreen(
-                            vm = vm,
-                            onRecord = {
+            NavHost(
+                navController = nav,
+                startDestination = "home"
+            ) {
+                composable("home") {
+                    // beyondBounds=4：五页全部常驻，翻页不丢输入框草稿/搜索词/列表位置
+                    HorizontalPager(
+                        state = pagerState,
+                        beyondBoundsPageCount = 4,
+                        modifier = Modifier.fillMaxSize()
+                    ) { page ->
+                        when (page) {
+                            0 -> NoteListScreen(
+                                vm = vm,
+                                onRecord = {
+                                    vm.startWavRecording()
+                                    nav.navigate("record") { launchSingleTop = true }
+                                },
+                                onDetail = { id -> nav.navigate("detail/$id") },
+                                onSettings = { nav.navigate("settings") },
+                                onTrash = { nav.navigate("trash") }
+                            )
+                            1 -> LedgerScreen(
+                                vm = vm,
+                                onAsk = { nav.navigate("ask") },
+                                onTrash = { nav.navigate("trash") }
+                            )
+                            2 -> CourseScreen(
+                                vm = vm,
+                                onAsk = { nav.navigate("ask") },
+                                onTrash = { nav.navigate("trash") }
+                            )
+                            3 -> JournalScreen(vm = vm, onRecord = {
                                 vm.startWavRecording()
                                 nav.navigate("record") { launchSingleTop = true }
-                            },
-                            onDetail = { id -> nav.navigate("detail/$id") },
-                            onSettings = { nav.navigate("settings") },
-                            onTrash = { nav.navigate("trash") }
-                        )
-                        1 -> LedgerScreen(
-                            vm = vm,
-                            onAsk = { nav.navigate("ask") },
-                            onTrash = { nav.navigate("trash") }
-                        )
-                        2 -> CourseScreen(
-                            vm = vm,
-                            onAsk = { nav.navigate("ask") },
-                            onTrash = { nav.navigate("trash") }
-                        )
-                        3 -> JournalScreen(vm = vm, onRecord = {
-                            vm.startWavRecording()
-                            nav.navigate("record") { launchSingleTop = true }
-                        })
-                        else -> PeopleScreen(vm = vm)
+                            })
+                            else -> PeopleScreen(vm = vm)
+                        }
                     }
                 }
+                composable("record") {
+                    RecordScreen(vm = vm, onBack = { nav.popBackStack() })
+                }
+                composable(
+                    "detail/{id}",
+                    arguments = listOf(navArgument("id") { type = NavType.StringType })
+                ) { back ->
+                    val id = back.arguments?.getString("id") ?: ""
+                    DetailEditScreen(vm = vm, noteId = id, onBack = { nav.popBackStack() })
+                }
+                composable("settings") {
+                    SettingsScreen(
+                        vm = vm,
+                        onBack = { nav.popBackStack() },
+                        onAsk = { nav.navigate("ask") }
+                    )
+                }
+                composable("ask") {
+                    com.luyuan.ui.AskScreen(vm = vm, onBack = { nav.popBackStack() })
+                }
+                composable("trash") {
+                    TrashScreen(vm = vm, onBack = { nav.popBackStack() })
+                }
             }
-            composable("record") {
-                RecordScreen(vm = vm, onBack = { nav.popBackStack() })
-            }
-            composable(
-                "detail/{id}",
-                arguments = listOf(navArgument("id") { type = NavType.StringType })
-            ) { back ->
-                val id = back.arguments?.getString("id") ?: ""
-                DetailEditScreen(vm = vm, noteId = id, onBack = { nav.popBackStack() })
-            }
-            composable("settings") {
-                SettingsScreen(
-                    vm = vm,
-                    onBack = { nav.popBackStack() },
-                    onAsk = { nav.navigate("ask") }
+            // 悬浮终端胶囊（路河拍板：原稿样式，压在列表上方；各列表页已留底部避让空间）
+            if (currentRoute == "home") {
+                TerminalCapsule(
+                    onQuickInput = { showQuickInput = true },
+                    onRecord = {
+                        vm.startWavRecording()
+                        nav.navigate("record") { launchSingleTop = true }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
                 )
-            }
-            composable("ask") {
-                com.luyuan.ui.AskScreen(vm = vm, onBack = { nav.popBackStack() })
-            }
-            composable("trash") {
-                TrashScreen(vm = vm, onBack = { nav.popBackStack() })
             }
         }
     }
