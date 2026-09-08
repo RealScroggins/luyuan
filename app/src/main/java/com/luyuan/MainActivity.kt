@@ -50,7 +50,8 @@ import com.luyuan.ui.LedgerScreen
 import com.luyuan.ui.LuyuanTheme
 import com.luyuan.ui.LuyuanViewModel
 import com.luyuan.ui.NoteListScreen
-import com.luyuan.ui.pressScale
+import androidx.compose.ui.graphics.graphicsLayer
+import com.luyuan.ui.rememberPressScale
 import com.luyuan.ui.PeopleScreen
 import com.luyuan.ui.QuickInputSheet
 import com.luyuan.ui.RecordScreen
@@ -105,6 +106,7 @@ fun AppRoot(startDest: String) {
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(initialPage = 0) { 5 }
     val navInteraction = remember { MutableInteractionSource() }
+    val navScale = rememberPressScale(navInteraction)
     var showQuickInput by remember { mutableStateOf(false) }
     var searchMode by remember { mutableStateOf(false) }
     val searchQuery by vm.searchQuery.collectAsStateWithLifecycle()
@@ -147,7 +149,7 @@ fun AppRoot(startDest: String) {
                         icon = { Icon(icon, contentDescription = label) },
                         label = { Text(label) },
                         interactionSource = navInteraction,
-                        modifier = Modifier.pressScale(navInteraction)
+                        modifier = Modifier.graphicsLayer { scaleX = navScale; scaleY = navScale }
                     )
                     }
                 }
