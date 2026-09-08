@@ -11,7 +11,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.luyuan.data.Contact
 import com.luyuan.data.ContactRepository
+import com.luyuan.data.Course
+import com.luyuan.data.Expense
 import com.luyuan.data.NoteRepository
+import com.luyuan.data.V2EntityRepository
 import com.luyuan.domain.Note
 import com.luyuan.platform.JournalReminder
 import com.luyuan.platform.ReminderScheduler
@@ -40,6 +43,12 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     /** 联系人（contacts/ 目录，与 PC 端人脉页互通） */
     private val _contacts = MutableStateFlow<List<Contact>>(emptyList())
     val contacts: StateFlow<List<Contact>> = _contacts
+
+    /** SYNC_FORMAT v2 实体（记账/课程页，B1 只读） */
+    private val _expenses = MutableStateFlow<List<Expense>>(emptyList())
+    val expenses: StateFlow<List<Expense>> = _expenses
+    private val _courses = MutableStateFlow<List<Course>>(emptyList())
+    val courses: StateFlow<List<Course>> = _courses
 
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing
@@ -163,6 +172,8 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
             _todayDiary.value = NoteRepository.todayDiaryNote(ctx)
             _diaries.value = NoteRepository.listDiaries(ctx)
             _contacts.value = ContactRepository.listContacts(ctx)
+            _expenses.value = V2EntityRepository.listExpenses(ctx)
+            _courses.value = V2EntityRepository.listCourses(ctx)
             _refreshing.value = false
             _refreshDone.value += 1
         }
@@ -280,6 +291,25 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     fun purgeNote(id: String) {
         viewModelScope.launch(Dispatchers.IO) {
             NoteRepository.purgeNote(ctx, id)
+            _trash.value = NoteRepository.listTrash(ctx)
+        }
+    }
+
+    /** 批量恢复（回收站多选；恢复后笔记列表同步刷新） */
+    fun restoreNotes(ids: Collection<String>) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            for (id in ids) NoteRepository.restoreNote(ctx, id)
+            _trash.value = NoteRepository.listTrash(ctx)
+            _notes.value = NoteRepository.listNotes(ctx)
+        }
+    }
+
+    /** 批量彻底删除（物理删，调用方负责确认弹窗） */
+    fun purgeNotes(ids: Collection<String>) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            for (id in ids) NoteRepository.purgeNote(ctx, id)
             _trash.value = NoteRepository.listTrash(ctx)
         }
     }

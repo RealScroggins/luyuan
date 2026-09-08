@@ -5,15 +5,19 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Notes
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -23,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -33,14 +38,18 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.luyuan.ui.CourseScreen
 import com.luyuan.ui.DetailEditScreen
 import com.luyuan.ui.JournalScreen
+import com.luyuan.ui.LedgerScreen
 import com.luyuan.ui.LuyuanTheme
 import com.luyuan.ui.LuyuanViewModel
 import com.luyuan.ui.NoteListScreen
 import com.luyuan.ui.PeopleScreen
+import com.luyuan.ui.QuickInputSheet
 import com.luyuan.ui.RecordScreen
 import com.luyuan.ui.SettingsScreen
+import com.luyuan.ui.TerminalCapsule
 import com.luyuan.ui.TrashScreen
 import kotlinx.coroutines.launch
 
@@ -75,7 +84,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** 三页横滑：日记(负一屏) ← 记事(主页) → 人脉(第二屏)，底部栏点选与手势互通（与 PC 面板同构） */
+/**
+ * 手机 UI 方案 A「五键直达」（2026-09-08 路河拍板，施工合同=交接_App端_手机UI方案A）：
+ * 底栏五键（笔记/记账/课程/日记/人脉）+ 悬浮超级终端胶囊（唯一录入口）；
+ * 问路远/回收站=右上角 push 进出的独立页。
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AppRoot(startDest: String) {
@@ -84,43 +97,57 @@ fun AppRoot(startDest: String) {
     val backStackEntry by nav.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val scope = rememberCoroutineScope()
-    val pagerState = rememberPagerState(initialPage = 1) { 3 }
+    val pagerState = rememberPagerState(initialPage = 0) { 5 }
+    var showQuickInput by remember { mutableStateOf(false) }
 
     LaunchedEffect(startDest) {
         when (startDest) {
             "record" -> {
-                // 快捷磁贴/音量键/小部件唤起：直接开「录音待转写」（系统识别通道已移除）
+                // 快捷磁贴/音量键/小部件唤起：直接开「录音待转写」
                 vm.startWavRecording()
                 nav.navigate("record") { launchSingleTop = true }
             }
             "note" -> {
-                // 桌面小部件「记一笔」：确保落在主页输入框并弹键盘
-                pagerState.scrollToPage(1)
+                // 桌面小部件「记一笔」：落在笔记页并聚焦主页输入框弹键盘
+                pagerState.scrollToPage(0)
                 vm.requestDraftFocus()
             }
         }
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             if (currentRoute == "home") {
-                NavigationBar {
-                    val tabs = listOf(
-                        Triple(0, "日记", Icons.Default.EditNote),
-                        Triple(1, "记事", Icons.AutoMirrored.Filled.Notes),
-                        Triple(2, "人脉", Icons.Default.People)
+                Column {
+                    // 唯一录入口（B1 简版：点=快速输入浮层，麦克风=录音；B3 接意图识别）
+                    TerminalCapsule(
+                        onQuickInput = { showQuickInput = true },
+                        onRecord = {
+                            vm.startWavRecording()
+                            nav.navigate("record") { launchSingleTop = true }
+                        }
                     )
-                    for ((page, label, icon) in tabs) {
-                        NavigationBarItem(
-                            selected = pagerState.currentPage == page,
-                            onClick = {
-                                if (pagerState.currentPage != page) {
-                                    scope.launch { pagerState.animateScrollToPage(page) }
-                                }
-                            },
-                            icon = { Icon(icon, contentDescription = label) },
-                            label = { Text(label) }
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
+                        val tabs = listOf(
+                            Triple(0, "笔记", Icons.AutoMirrored.Filled.Notes),
+                            Triple(1, "记账", Icons.Default.Payments),
+                            Triple(2, "课程", Icons.Default.CalendarMonth),
+                            Triple(3, "日记", Icons.Default.EditNote),
+                            Triple(4, "人脉", Icons.Default.People)
                         )
+                        for ((page, label, icon) in tabs) {
+                            NavigationBarItem(
+                                selected = pagerState.currentPage == page,
+                                onClick = {
+                                    if (pagerState.currentPage != page) {
+                                        scope.launch { pagerState.animateScrollToPage(page) }
+                                    }
+                                },
+                                icon = { Icon(icon, contentDescription = label) },
+                                label = { Text(label) }
+                            )
+                        }
                     }
                 }
             }
@@ -132,21 +159,37 @@ fun AppRoot(startDest: String) {
             modifier = Modifier.padding(pad)
         ) {
             composable("home") {
-                // beyondBounds=2：三页常驻，翻页不丢输入框草稿/搜索词/列表位置
+                // beyondBounds=4：五页全部常驻，翻页不丢输入框草稿/搜索词/列表位置
                 HorizontalPager(
                     state = pagerState,
-                    beyondBoundsPageCount = 2,
+                    beyondBoundsPageCount = 4,
                     modifier = Modifier.fillMaxSize()
                 ) { page ->
                     when (page) {
-                        0 -> JournalScreen(vm = vm, onRecord = { nav.navigate("record") })
-                        1 -> NoteListScreen(
+                        0 -> NoteListScreen(
                             vm = vm,
-                            onRecord = { nav.navigate("record") },
+                            onRecord = {
+                                vm.startWavRecording()
+                                nav.navigate("record") { launchSingleTop = true }
+                            },
                             onDetail = { id -> nav.navigate("detail/$id") },
                             onSettings = { nav.navigate("settings") },
                             onTrash = { nav.navigate("trash") }
                         )
+                        1 -> LedgerScreen(
+                            vm = vm,
+                            onAsk = { nav.navigate("ask") },
+                            onTrash = { nav.navigate("trash") }
+                        )
+                        2 -> CourseScreen(
+                            vm = vm,
+                            onAsk = { nav.navigate("ask") },
+                            onTrash = { nav.navigate("trash") }
+                        )
+                        3 -> JournalScreen(vm = vm, onRecord = {
+                            vm.startWavRecording()
+                            nav.navigate("record") { launchSingleTop = true }
+                        })
                         else -> PeopleScreen(vm = vm)
                     }
                 }
@@ -175,5 +218,9 @@ fun AppRoot(startDest: String) {
                 TrashScreen(vm = vm, onBack = { nav.popBackStack() })
             }
         }
+    }
+
+    if (showQuickInput) {
+        QuickInputSheet(vm = vm, onDismiss = { showQuickInput = false })
     }
 }
