@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -102,6 +103,8 @@ fun AppRoot(startDest: String) {
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(initialPage = 0) { 5 }
     var showQuickInput by remember { mutableStateOf(false) }
+    var searchMode by remember { mutableStateOf(false) }
+    val searchQuery by vm.searchQuery.collectAsStateWithLifecycle()
 
     LaunchedEffect(startDest) {
         when (startDest) {
@@ -111,9 +114,9 @@ fun AppRoot(startDest: String) {
                 nav.navigate("record") { launchSingleTop = true }
             }
             "note" -> {
-                // 桌面小部件「记一笔」：落在笔记页并聚焦主页输入框弹键盘
+                // 桌面小部件「记一笔」：落在笔记页并弹胶囊输入浮层（主页常驻输入框已由胶囊替代）
                 pagerState.scrollToPage(0)
-                vm.requestDraftFocus()
+                showQuickInput = true
             }
         }
     }
@@ -215,9 +218,16 @@ fun AppRoot(startDest: String) {
                     TrashScreen(vm = vm, onBack = { nav.popBackStack() })
                 }
             }
-            // 悬浮终端胶囊（路河拍板：原稿样式，压在列表上方；各列表页已留底部避让空间）
+            // 悬浮终端胶囊（路河拍板：替代主页常驻输入框与搜索框，一框三用=输入/搜索/录音）
             if (currentRoute == "home") {
                 TerminalCapsule(
+                    searchMode = searchMode,
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = { vm.setSearchQuery(it) },
+                    onToggleSearch = {
+                        searchMode = !searchMode
+                        if (!searchMode) vm.setSearchQuery("")
+                    },
                     onQuickInput = { showQuickInput = true },
                     onRecord = {
                         vm.startWavRecording()

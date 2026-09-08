@@ -61,6 +61,14 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     private val _focusDraft = MutableStateFlow(0)
     val focusDraft: StateFlow<Int> = _focusDraft
 
+    /** 全局搜索词（悬浮胶囊搜索态写入，笔记列表实时过滤；退出搜索态清空） */
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery
+
+    fun setSearchQuery(q: String) {
+        _searchQuery.value = q
+    }
+
     fun requestDraftFocus() {
         _focusDraft.value += 1
     }

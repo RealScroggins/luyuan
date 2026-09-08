@@ -289,25 +289,14 @@ fun NoteListScreen(
 ) {
     val notes by vm.notes.collectAsStateWithLifecycle()
     val moodEnabled by vm.moodEnabled.collectAsStateWithLifecycle()
-    var query by remember { mutableStateOf("") }
-    var draft by remember { mutableStateOf("") }
+    // 搜索词由悬浮胶囊的搜索态提供（v1.14.2 起主页不再有常驻搜索框/输入框）
+    val query by vm.searchQuery.collectAsStateWithLifecycle()
     var selecting by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(setOf<String>()) }
     val context = LocalContext.current
     val allFilesGranted = PermissionHelper.hasAllFiles(context)
     val scope = rememberCoroutineScope()
     val keyboard = LocalSoftwareKeyboardController.current
-    val draftFocus = remember { FocusRequester() }
-
-    // 桌面小部件「记一笔」直达：聚焦主页输入框并弹键盘
-    val focusTick by vm.focusDraft.collectAsStateWithLifecycle()
-    LaunchedEffect(focusTick) {
-        if (focusTick > 0) {
-            delay(150) // 等 pager 落页稳定
-            draftFocus.requestFocus()
-            keyboard?.show()
-        }
-    }
 
     // 每次回到列表都重新读盘，授权后/同步后立刻可见
     LaunchedEffect(Unit) { vm.refresh() }
@@ -403,79 +392,6 @@ fun NoteListScreen(
                     }
                 }
             )
-        },
-        // 输入区沉底：拇指最好按的位置（搜索在上，记一笔+录音键贴底）
-        bottomBar = {
-            Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 8.dp) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        placeholder = { Text("搜索…") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = draft,
-                            onValueChange = { draft = it },
-                            placeholder = { Text("记一笔，回车保存") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = {
-                                if (draft.isNotBlank()) {
-                                    vm.addManual(draft)
-                                    draft = ""
-                                }
-                            }),
-                            modifier = Modifier.weight(1f).focusRequester(draftFocus)
-                        )
-                        Spacer(Modifier.size(4.dp))
-                        // 麦克风之二：键盘语音（vivo 输入法长按空格=讯飞语音，断网可用）。
-                        // 弹键盘后无障碍服务自动代按一次空格；服务没开则提示手动长按。
-                        IconButton(onClick = {
-                            draftFocus.requestFocus()
-                            keyboard?.show()
-                            scope.launch {
-                                delay(900) // 等键盘完全弹出
-                                val ok = com.luyuan.platform.VolumeKeyService.spaceLongPress()
-                                if (!ok) {
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        "键盘弹出后请手动长按空格说话（或到设置开启无障碍服务代按）",
-                                        android.widget.Toast.LENGTH_LONG
-                                    ).show()
-                                }
-                            }
-                        }) {
-                            Icon(
-                                Icons.Default.KeyboardVoice,
-                                contentDescription = "键盘语音",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Spacer(Modifier.size(4.dp))
-                        Button(
-                            onClick = {
-                                vm.startWavRecording()
-                                onRecord()
-                            },
-                            shape = CircleShape,
-                            contentPadding = PaddingValues(0.dp),
-                            modifier = Modifier.size(54.dp)
-                        ) {
-                            Icon(Icons.Default.Mic, contentDescription = "录音")
-                        }
-                    }
-                }
-            }
         }
     ) { padding ->
         val refreshing by vm.refreshing.collectAsStateWithLifecycle()
