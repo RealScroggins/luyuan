@@ -81,14 +81,19 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        val r = routeFromIntent(intent)
-        if (r == "record" || r == "note") autoRoute = r
+        autoRoute = routeFromIntent(intent)
     }
 
-    private fun routeFromIntent(i: Intent?): String = when (i?.getStringExtra("auto")) {
-        "record" -> "record"
-        "note" -> "note"
-        else -> "list"
+    /** 快捷磁贴/通知/桌面组件唤起时的目标页。
+     *  "record"/"note" 走超级终端；"page"=跳到底栏某页；"detailId"=进某条笔记详情。 */
+    private fun routeFromIntent(i: Intent?): String {
+        when (i?.getStringExtra("auto")) {
+            "record" -> return "record"
+            "note" -> return "note"
+        }
+        i?.getStringExtra("page")?.let { return "tab:$it" }
+        i?.getStringExtra("detailId")?.let { return "detail:$it" }
+        return "list"
     }
 }
 
@@ -114,16 +119,33 @@ fun AppRoot(startDest: String) {
     val multiSelect by vm.multiSelect.collectAsStateWithLifecycle()
 
     LaunchedEffect(startDest) {
-        when (startDest) {
-            "record" -> {
+        when {
+            startDest == "record" -> {
                 // 快捷磁贴/音量键/小部件唤起：直接开「录音待转写」
                 vm.startWavRecording()
                 nav.navigate("record") { launchSingleTop = true }
             }
-            "note" -> {
+            startDest == "note" -> {
                 // 桌面小部件「记一笔」：落在笔记页并弹胶囊输入浮层（主页常驻输入框已由胶囊替代）
                 pagerState.scrollToPage(0)
                 showQuickInput = true
+            }
+            startDest.startsWith("tab:") -> {
+                // 桌面组件今日卡：跳到底栏对应页
+                val idx = when (startDest.removePrefix("tab:")) {
+                    "notes" -> 0
+                    "ledger" -> 1
+                    "course" -> 2
+                    "journal" -> 3
+                    "people" -> 4
+                    else -> 0
+                }
+                pagerState.scrollToPage(idx)
+            }
+            startDest.startsWith("detail:") -> {
+                // 桌面组件今日卡「最近」：进对应笔记详情
+                pagerState.scrollToPage(0)
+                nav.navigate("detail/${startDest.removePrefix("detail:")}") { launchSingleTop = true }
             }
         }
     }
@@ -199,7 +221,7 @@ fun AppRoot(startDest: String) {
                                 vm.startWavRecording()
                                 nav.navigate("record") { launchSingleTop = true }
                             })
-                            else -> PeopleScreen(vm = vm)
+                            else -> PeopleScreen(vm = vm, onNoteClick = { nav.navigate("detail/$it") })
                         }
                     }
                 }

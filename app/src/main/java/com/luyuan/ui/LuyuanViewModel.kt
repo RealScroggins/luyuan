@@ -18,6 +18,7 @@ import com.luyuan.data.V2EntityRepository
 import com.luyuan.domain.Note
 import com.luyuan.platform.JournalReminder
 import com.luyuan.platform.ReminderScheduler
+import com.luyuan.platform.TodayWidgetProvider
 import com.luyuan.platform.StorageLocator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -192,6 +193,15 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
             _courses.value = V2EntityRepository.listCourses(ctx)
             _refreshing.value = false
             _refreshDone.value += 1
+            // 通知桌面「今日卡」组件重算（组件无周期刷新，靠 App 打开/数据变动主动推）
+            try {
+                ctx.sendBroadcast(
+                    Intent(ctx, TodayWidgetProvider::class.java).apply {
+                        action = TodayWidgetProvider.ACTION_REFRESH
+                    }
+                )
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -232,6 +242,43 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             ContactRepository.snoozeTodo(ctx, contactId, todoId, hours)
             ReminderScheduler.cancel(ctx, "ctodo_" + todoId)
+            ReminderScheduler.rescheduleAll(ctx)
+            _contacts.value = ContactRepository.listContacts(ctx)
+        }
+    }
+
+    /** v2 名片页：加一件待办（回车即存），写回后刷新列表并重排闹钟 */
+    fun addContactTodo(contactId: String, text: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            ContactRepository.addTodo(ctx, contactId, text)
+            ReminderScheduler.rescheduleAll(ctx)
+            _contacts.value = ContactRepository.listContacts(ctx)
+        }
+    }
+
+    /** 解析生日串为 月/日（支持 "10月20日" / "10-20" / "2026-10-20" / "10/20"） */
+    private fun parseBirthdayMd(s: String): Pair<Int, Int>? {
+        val m = Regex("""(\d{1,2})\s*[月/\-./]\s*(\d{1,2})""").find(s) ?: return null
+        val a = m.groupValues[1].toIntOrNull() ?: return null
+        val b = m.groupValues[2].toIntOrNull() ?: return null
+        if (a in 1..12 && b in 1..31) return a to b
+        return null
+    }
+
+    /** v2 名片页：生日提前 3 天提醒——复用待办提醒通道（不新增联系人字段、不改 SYNC_FORMAT） */
+    fun setContactBirthdayReminder(contactId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val c = ContactRepository.findContact(ctx, contactId) ?: return@launch
+            val md = parseBirthdayMd(c.birthday) ?: return@launch
+            val now = java.time.LocalDate.now()
+            var born = java.time.LocalDate.of(now.year, md.first, md.second)
+            if (!born.isAfter(now)) born = born.plusYears(1)
+            val remind = born.minusDays(3).atTime(9, 0)
+                .atOffset(java.time.ZoneOffset.of("+08:00")).toString()
+            val exists = c.todos.any { !it.done && it.text.contains("生日") }
+            if (!exists) {
+                ContactRepository.addTodoWithRemind(ctx, contactId, "生日提醒：${c.birthday}", remind)
+            }
             ReminderScheduler.rescheduleAll(ctx)
             _contacts.value = ContactRepository.listContacts(ctx)
         }

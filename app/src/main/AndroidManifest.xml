@@ -107,6 +107,18 @@
                 android:resource="@xml/quick_widget_info" />
         </receiver>
 
+        <!-- 桌面小部件：今日卡（课程/待办/支出/最近，深链各页） -->
+        <receiver
+            android:name=".platform.TodayWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/today_widget_info" />
+        </receiver>
+
         <receiver
             android:name=".platform.JournalReceiver"
             android:exported="false" />

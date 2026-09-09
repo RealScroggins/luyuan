@@ -127,6 +127,37 @@ object ContactRepository {
         file.writeText(contactJson.encodeToString(Contact.serializer(), updated), Charsets.UTF_8)
     }
 
+    /** v2 名片页：加一件待办（回车即存），原地写回，同步回 PC */
+    fun addTodo(context: Context, contactId: String, text: String) {
+        val t = text.trim()
+        if (t.isBlank()) return
+        val (file, c) = findFile(context, contactId) ?: return
+        val newTodo = ContactTodo(
+            id = "t_" + System.currentTimeMillis().toString(36) + "_" + (0..9999).random().toString(),
+            text = t,
+            done = false,
+            created_at = NoteRepository.nowIso()
+        )
+        val updated = c.copy(todos = c.todos + newTodo, updated_at = NoteRepository.nowIso())
+        file.writeText(contactJson.encodeToString(Contact.serializer(), updated), Charsets.UTF_8)
+    }
+
+    /** v2 名片页：加待办并带提醒时间（生日提前 3 天提醒复用此通道，不新增联系人字段、不改 SYNC_FORMAT） */
+    fun addTodoWithRemind(context: Context, contactId: String, text: String, remindAtIso: String) {
+        val t = text.trim()
+        if (t.isBlank()) return
+        val (file, c) = findFile(context, contactId) ?: return
+        val newTodo = ContactTodo(
+            id = "t_" + System.currentTimeMillis().toString(36) + "_" + (0..9999).random().toString(),
+            text = t,
+            done = false,
+            created_at = NoteRepository.nowIso(),
+            remind_at = remindAtIso
+        )
+        val updated = c.copy(todos = c.todos + newTodo, updated_at = NoteRepository.nowIso())
+        file.writeText(contactJson.encodeToString(Contact.serializer(), updated), Charsets.UTF_8)
+    }
+
     fun findContact(context: Context, contactId: String): Contact? =
         findFile(context, contactId)?.second
 

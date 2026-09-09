@@ -6,7 +6,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,11 +62,72 @@ import com.luyuan.data.Contact
 import com.luyuan.data.ContactTodo
 import kotlinx.coroutines.launch
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeLineJoin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+
+import com.luyuan.domain.Note
+
 /** 第二屏 · 人脉：待办置顶红板 + 联系人字母索引 + 搜索，数据来自共享目录 contacts/ */
+
+// 自定义矢量图标（微信 / QQ 无 Material 等价物，按 v2 设计稿 1.5px 描边重绘，禁 emoji）
+private val WECHAT_PATH = "M8.5 4C5.5 4 3 6 3 8.7c0 1.5.8 2.8 2 3.7L4.4 14.5l2-1a8 8 0 0 0 2.1.3M9.5 8.9c0-2.2 2.2-4 4.9-4s4.9 1.8 4.9 4-2.2 4-4.9 4c-.6 0-1.2-.1-1.7-.2L10.5 14l.5-1.7c-.9-.7-1.5-1.9-1.5-3.4z"
+private val QQ_PATH = "M11 3.5c-3 0-4.8 2-4.8 5 0 1.8-.6 3-1.2 4 .4.8 1.6.6 2.4.2.3.8 1.2 1.8 3.6 1.8s3.3-1 3.6-1.8c.8.4 2 .6 2.4-.2-.6-1-1.2-2.2-1.2-4 0-3-1.8-5-4.8-5zM9.5 17.5c.8.6 2.2.6 3 0"
+
+private val WechatIcon: ImageVector by lazy {
+    ImageVector.Builder("wechat", 22.dp, 22.dp, 22f, 22f).apply {
+        addPath(
+            pathData = PathParser().parsePathString(WECHAT_PATH).toNodes(),
+            fillColor = Color.Transparent,
+            strokeColor = Color.Black,
+            strokeLineWidth = 1.6f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeLineJoin.Round
+        )
+    }.build()
+}
+
+private val QqIcon: ImageVector by lazy {
+    ImageVector.Builder("qq", 22.dp, 22.dp, 22f, 22f).apply {
+        addPath(
+            pathData = PathParser().parsePathString(QQ_PATH).toNodes(),
+            fillColor = Color.Transparent,
+            strokeColor = Color.Black,
+            strokeLineWidth = 1.6f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeLineJoin.Round
+        )
+    }.build()
+}
+
+/** ISO 时间取 MM-DD（来往时间线用） */
+private fun md(iso: String): String = if (iso.length >= 10) iso.substring(5, 10) else iso
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PeopleScreen(vm: LuyuanViewModel) {
+fun PeopleScreen(vm: LuyuanViewModel, onNoteClick: (String) -> Unit = {}) {
     val contacts by vm.contacts.collectAsStateWithLifecycle()
+    val notes by vm.notes.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
     var detail by remember { mutableStateOf<Contact?>(null) }
     val listState = rememberLazyListState()
@@ -195,7 +255,7 @@ fun PeopleScreen(vm: LuyuanViewModel) {
                                                 Text(
                                                     listOfNotNull(
                                                         c.phone.ifBlank { null },
-                                                        c.birthday.takeIf { it.isNotBlank() }?.let { "🎂 $it" }
+                                                        c.birthday.takeIf { it.isNotBlank() }
                                                     ).joinToString("  "),
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -264,158 +324,184 @@ fun PeopleScreen(vm: LuyuanViewModel) {
         val c = contacts.firstOrNull { it.id == picked.id } ?: picked
         ContactDetailDialog(
             contact = c,
+            notes = notes,
             onDismiss = { detail = null },
             onToggleTodo = { todoId -> vm.toggleContactTodo(c.id, todoId) },
-            onSnoozeTodo = { todoId, hours -> vm.snoozeContactTodo(c.id, todoId, hours) }
+            onSnoozeTodo = { todoId, hours -> vm.snoozeContactTodo(c.id, todoId, hours) },
+            onAddTodo = { vm.addContactTodo(c.id, it) },
+            onBirthdayRemind = { vm.setContactBirthdayReminder(c.id) },
+            onNoteClick = onNoteClick
         )
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ContactDetailDialog(
     contact: Contact,
+    notes: List<Note>,
     onDismiss: () -> Unit,
     onToggleTodo: (String) -> Unit,
-    onSnoozeTodo: (String, Int?) -> Unit
+    onSnoozeTodo: (String, Int?) -> Unit,
+    onAddTodo: (String) -> Unit,
+    onBirthdayRemind: () -> Unit,
+    onNoteClick: (String) -> Unit
 ) {
     val context = LocalContext.current
     val clipboard: ClipboardManager = LocalClipboardManager.current
     var snoozeTarget by remember { mutableStateOf<ContactTodo?>(null) }
+    var draft by remember { mutableStateOf("") }
 
-    AlertDialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        title = { Text(contact.name, fontWeight = FontWeight.Bold) },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                // 分享名片：拼成纯文本走系统分享——对方不需要装路远，微信/QQ/短信都能收
-                TextButton(onClick = {
-                    val lines = mutableListOf("【${contact.name}】")
-                    if (contact.phone.isNotBlank()) lines.add("电话：${contact.phone}")
-                    if (contact.wechat.isNotBlank()) lines.add("微信：${contact.wechat}")
-                    if (contact.qq.isNotBlank()) lines.add("QQ：${contact.qq}")
-                    if (contact.birthday.isNotBlank()) lines.add("生日：${contact.birthday}")
-                    for (line in contact.info) lines.add("· $line")
-                    try {
-                        context.startActivity(
-                            Intent.createChooser(
-                                Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, lines.joinToString("\n"))
-                                },
-                                "分享联系人"
-                            )
-                        )
-                    } catch (_: Exception) {
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column(Modifier.fillMaxSize()) {
+                // ---------- 深绿英雄区 ----------
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Brush.linearGradient(0f to Color(0xFF224A3A), 1f to LuyuanColors.Green700))
+                        .padding(horizontal = 18.dp, vertical = 16.dp)
+                ) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.TopEnd)) {
+                        Icon(Icons.Filled.Close, contentDescription = "关闭", tint = Color.White)
                     }
-                }) { Text("📤 分享名片（文字形式，谁都能看）") }
-                InfoRow("电话", contact.phone) {
-                    if (contact.phone.isNotBlank()) {
-                        Icon(
-                            Icons.Default.Call,
-                            contentDescription = "拨号",
-                            tint = MaterialTheme.colorScheme.primary,
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
                             modifier = Modifier
-                                .size(22.dp)
-                                .clickable {
-                                    try {
-                                        context.startActivity(
-                                            Intent(Intent.ACTION_DIAL, android.net.Uri.parse("tel:" + contact.phone))
-                                        )
-                                    } catch (_: Exception) {
-                                    }
-                                }
-                        )
-                    }
-                }
-                InfoRow("微信", contact.wechat) {
-                    if (contact.wechat.isNotBlank()) {
-                        Text(
-                            "复制并打开",
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 13.sp,
-                            modifier = Modifier.clickable {
-                                clipboard.setText(AnnotatedString(contact.wechat))
-                                val launch = context.packageManager.getLaunchIntentForPackage("com.tencent.mm")
-                                if (launch != null) {
-                                    context.startActivity(launch)
-                                    Toast.makeText(context, "微信号已复制，去微信粘贴搜索", Toast.LENGTH_LONG).show()
-                                } else {
-                                    Toast.makeText(context, "微信号已复制（未找到微信）", Toast.LENGTH_LONG).show()
-                                }
+                                .size(52.dp)
+                                .background(Color.White.copy(alpha = 0.18f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(contact.name.take(1), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(contact.name, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
+                            val rel = contact.info.firstOrNull()?.takeIf { it.isNotBlank() }
+                            val met = contact.created_at.takeIf { it.isNotBlank() }?.let { "认识于 " + it.take(10) }
+                            val subtitle = listOfNotNull(rel, met).joinToString(" · ")
+                            if (subtitle.isNotBlank()) {
+                                Text(subtitle, color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
                             }
-                        )
-                    }
-                }
-                InfoRow("QQ", contact.qq) {
-                    if (contact.qq.isNotBlank()) {
-                        Text(
-                            "去聊天",
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 13.sp,
-                            modifier = Modifier.clickable {
-                                try {
-                                    context.startActivity(
-                                        Intent(Intent.ACTION_VIEW, android.net.Uri.parse("mqq://im/chat?chat_type=uin&uin=" + contact.qq))
-                                    )
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "没有装 QQ 或无法跳转", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        )
-                    }
-                }
-                if (contact.birthday.isNotBlank()) InfoRow("生日", contact.birthday) {}
-                for (line in contact.info) {
-                    Text("· $line", style = MaterialTheme.typography.bodyMedium)
-                }
-                if (contact.todos.isNotEmpty()) {
-                    HorizontalDivider()
-                    Text("待办", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
-                    for (t in contact.todos.sortedBy { it.done }) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(
-                                checked = t.done,
-                                onCheckedChange = { onToggleTodo(t.id) }
-                            )
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    t.text,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = if (t.done) MaterialTheme.typography.bodyMedium.copy(
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    ) else MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.combinedClickable(
-                                        onClick = {},
-                                        onLongClick = { if (!t.done) snoozeTarget = t }
-                                    )
-                                )
-                                if (!t.done && !t.remind_at.isNullOrBlank()) {
-                                    Text(
-                                        "⏰ " + (t.remind_at ?: "").take(16).replace('T', ' '),
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            if (!t.done) {
-                                Text(
-                                    "贪睡",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier
-                                        .clickable { snoozeTarget = t }
-                                        .padding(start = 8.dp)
-                                )
+                        }
+                        if (contact.birthday.isNotBlank()) {
+                            Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 12.dp)) {
+                                Text("生日", color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp)
+                                Text(contact.birthday, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
                 }
+                // ---------- 四快捷键 ----------
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    QuickAction(icon = Icons.Filled.Call, label = "打电话", enabled = contact.phone.isNotBlank()) {
+                        if (contact.phone.isNotBlank()) {
+                            try { context.startActivity(Intent(Intent.ACTION_DIAL, android.net.Uri.parse("tel:" + contact.phone))) } catch (_: Exception) {}
+                        }
+                    }
+                    QuickAction(icon = WechatIcon, label = "微信号", enabled = contact.wechat.isNotBlank()) {
+                        if (contact.wechat.isNotBlank()) {
+                            clipboard.setText(AnnotatedString(contact.wechat))
+                            val launch = context.packageManager.getLaunchIntentForPackage("com.tencent.mm")
+                            if (launch != null) { context.startActivity(launch); Toast.makeText(context, "微信号已复制，去微信粘贴搜索", Toast.LENGTH_LONG).show() }
+                            else Toast.makeText(context, "微信号已复制（未找到微信）", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    QuickAction(icon = QqIcon, label = "QQ", enabled = contact.qq.isNotBlank()) {
+                        if (contact.qq.isNotBlank()) {
+                            try { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("mqq://im/chat?chat_type=uin&uin=" + contact.qq))) }
+                            catch (e: Exception) { Toast.makeText(context, "没有装 QQ 或无法跳转", Toast.LENGTH_SHORT).show() }
+                        }
+                    }
+                    QuickAction(icon = Icons.Filled.Share, label = "分享名片") {
+                        val lines = mutableListOf("【${contact.name}】")
+                        if (contact.phone.isNotBlank()) lines.add("电话：${contact.phone}")
+                        if (contact.wechat.isNotBlank()) lines.add("微信：${contact.wechat}")
+                        if (contact.qq.isNotBlank()) lines.add("QQ：${contact.qq}")
+                        if (contact.birthday.isNotBlank()) lines.add("生日：${contact.birthday}")
+                        for (line in contact.info) lines.add("· $line")
+                        try { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, lines.joinToString("\n")) }, "分享联系人")) } catch (_: Exception) {}
+                    }
+                }
+                // ---------- 可滚动主体 ----------
+                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    // 待人办
+                    SectionCard(icon = Icons.Filled.Notifications, title = "待人办 · ${contact.undoneTodos.size} 件未办") {
+                        if (contact.todos.isEmpty()) {
+                            Text("还没有待办", color = LuyuanColors.Ink3, fontSize = 13.sp, modifier = Modifier.padding(vertical = 4.dp))
+                        } else {
+                            for (t in contact.todos.sortedBy { it.done }) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
+                                    Box(
+                                        modifier = Modifier.size(19.dp)
+                                            .background(if (t.done) LuyuanColors.Green700 else Color.Transparent, CircleShape)
+                                            .border(1.6.dp, if (t.done) LuyuanColors.Green700 else LuyuanColors.Ink4, CircleShape)
+                                            .clickable { onToggleTodo(t.id) },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (t.done) Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                                    }
+                                    Spacer(Modifier.width(9.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            t.text,
+                                            fontSize = 13.sp,
+                                            color = if (t.done) LuyuanColors.Ink3 else LuyuanColors.Ink1,
+                                            textDecoration = if (t.done) TextDecoration.LineThrough else null,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        if (!t.done && !t.remind_at.isNullOrBlank()) {
+                                            Text("提醒 " + (t.remind_at ?: "").take(16).replace('T', ' '), fontSize = 11.sp, color = LuyuanColors.Ink3)
+                                        }
+                                    }
+                                    if (!t.done) {
+                                        Text("贪睡", fontSize = 12.sp, color = LuyuanColors.Green700, modifier = Modifier.clickable { snoozeTarget = t }.padding(start = 8.dp))
+                                    }
+                                }
+                            }
+                            // 加待办（回车即存）
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                                OutlinedTextField(
+                                    value = draft,
+                                    onValueChange = { draft = it },
+                                    placeholder = { Text("加一件待办，回车即存", fontSize = 12.sp) },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                    keyboardActions = KeyboardActions(onDone = { if (draft.isNotBlank()) { onAddTodo(draft.trim()); draft = "" } }),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(onClick = { if (draft.isNotBlank()) { onAddTodo(draft.trim()); draft = "" } }) {
+                                    Icon(Icons.Filled.Add, contentDescription = "加待办", tint = LuyuanColors.Green700)
+                                }
+                            }
+                        }
+                    }
+                    // 资料
+                    SectionCard(icon = Icons.Filled.Info, title = "资料") {
+                        InfoRowV2("电话", contact.phone, "拨打") { if (contact.phone.isNotBlank()) { try { context.startActivity(Intent(Intent.ACTION_DIAL, android.net.Uri.parse("tel:" + contact.phone))) } catch (_: Exception) {} } }
+                        InfoRowV2("微信", contact.wechat, "复制并打开") { if (contact.wechat.isNotBlank()) { clipboard.setText(AnnotatedString(contact.wechat)); val launch = context.packageManager.getLaunchIntentForPackage("com.tencent.mm"); if (launch != null) { context.startActivity(launch); Toast.makeText(context, "微信号已复制", Toast.LENGTH_SHORT).show() } else Toast.makeText(context, "微信号已复制（未找到微信）", Toast.LENGTH_SHORT).show() } }
+                        InfoRowV2("QQ", contact.qq, "打开") { if (contact.qq.isNotBlank()) { try { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("mqq://im/chat?chat_type=uin&uin=" + contact.qq))) } catch (_: Exception) { Toast.makeText(context, "没有装 QQ 或无法跳转", Toast.LENGTH_SHORT).show() } } }
+                        if (contact.birthday.isNotBlank()) {
+                            val hasBdayRemind = contact.todos.any { !it.done && it.text.contains("生日") }
+                            InfoRowV2("生日", contact.birthday, if (hasBdayRemind) null else "提前 3 天提醒") { if (!hasBdayRemind) onBirthdayRemind() }
+                            if (hasBdayRemind) Text("已设提前 3 天提醒", fontSize = 11.sp, color = LuyuanColors.Ink3, modifier = Modifier.padding(start = 40.dp, bottom = 6.dp))
+                        }
+                        if (contact.info.isNotEmpty()) {
+                            InfoRowV2("备注", contact.info.joinToString("；")) { }
+                        }
+                    }
+                    // 来往时间线
+                    TimelineCard(contact = contact, notes = notes, onNoteClick = onNoteClick)
+                }
             }
         }
-    )
+    }
 
     // 贪睡弹窗（v1.11）：推后 1/3 小时或取消提醒
     snoozeTarget?.let { t ->
@@ -433,15 +519,9 @@ private fun ContactDetailDialog(
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    TextButton(onClick = { onSnoozeTodo(t.id, 1); snoozeTarget = null }) {
-                        Text("⏰ 1 小时后提醒")
-                    }
-                    TextButton(onClick = { onSnoozeTodo(t.id, 3); snoozeTarget = null }) {
-                        Text("⏰ 3 小时后提醒")
-                    }
-                    TextButton(onClick = { onSnoozeTodo(t.id, null); snoozeTarget = null }) {
-                        Text("🚫 取消提醒")
-                    }
+                    TextButton(onClick = { onSnoozeTodo(t.id, 1); snoozeTarget = null }) { Text("1 小时后提醒") }
+                    TextButton(onClick = { onSnoozeTodo(t.id, 3); snoozeTarget = null }) { Text("3 小时后提醒") }
+                    TextButton(onClick = { onSnoozeTodo(t.id, null); snoozeTarget = null }) { Text("取消提醒") }
                 }
             }
         )
@@ -449,16 +529,81 @@ private fun ContactDetailDialog(
 }
 
 @Composable
-private fun InfoRow(label: String, value: String, trailing: @Composable () -> Unit) {
+private fun SectionCard(icon: ImageVector, title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
+    ) {
+        Column(Modifier.padding(12.dp, 14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                Icon(icon, contentDescription = null, tint = LuyuanColors.Green700, modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(title, fontSize = 11.sp, color = LuyuanColors.Ink3, letterSpacing = 1.sp, fontWeight = FontWeight.Bold)
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+            Spacer(Modifier.height(4.dp))
+            content()
+        }
+    }
+}
+
+@Composable
+private fun QuickAction(icon: ImageVector, label: String, enabled: Boolean = true, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp))
+            .clickable(enabled = enabled) { onClick() }
+            .padding(vertical = 9.dp)
+    ) {
+        Icon(icon, contentDescription = label, tint = if (enabled) LuyuanColors.Green700 else LuyuanColors.Ink4, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.height(4.dp))
+        Text(label, fontSize = 10.sp, color = if (enabled) LuyuanColors.Ink2 else LuyuanColors.Ink4, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun InfoRowV2(label: String, value: String, actionLabel: String? = null, onClick: () -> Unit = {}) {
     if (value.isBlank()) return
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Text(
-            label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp,
-            modifier = Modifier.width(42.dp)
-        )
-        Text(value, modifier = Modifier.weight(1f))
-        trailing()
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().then(
+            if (actionLabel != null) Modifier.clickable { onClick() } else Modifier
+        ).padding(vertical = 7.dp)
+    ) {
+        Text(label, color = LuyuanColors.Ink3, fontSize = 11.sp, modifier = Modifier.width(40.dp))
+        Text(value, fontSize = 13.sp, color = LuyuanColors.Ink1, modifier = Modifier.weight(1f))
+        if (actionLabel != null) {
+            Text(actionLabel, fontSize = 11.sp, color = LuyuanColors.Green700, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { onClick() })
+        }
+    }
+}
+
+@Composable
+private fun TimelineCard(contact: Contact, notes: List<Note>, onNoteClick: (String) -> Unit) {
+    val items = remember(notes, contact.id) {
+        if (contact.name.length >= 2)
+            notes.filter { it.text.contains(contact.name, ignoreCase = true) }
+                .sortedByDescending { it.updated_at.ifBlank { it.created_at } }
+                .take(12)
+        else emptyList()
+    }
+    SectionCard(icon = Icons.Filled.History, title = "来往") {
+        if (items.isEmpty()) {
+            Text("还没有提到 ${contact.name} 的笔记", color = LuyuanColors.Ink3, fontSize = 13.sp, modifier = Modifier.padding(vertical = 4.dp))
+        } else {
+            for (n in items) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable { onNoteClick(n.id) }.padding(vertical = 7.dp)
+                ) {
+                    Text(md(n.updated_at.ifBlank { n.created_at }), color = LuyuanColors.Ink3, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+                    Text(n.text, fontSize = 13.sp, color = LuyuanColors.Ink1, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                }
+            }
+        }
     }
 }
