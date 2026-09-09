@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.align
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -85,7 +87,7 @@ fun DetailEditScreen(
     var rawText by remember { mutableStateOf<String?>(null) }
     var showRaw by remember { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(false) }
-    var showDelete by remember { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var pickedDate by remember { mutableStateOf<java.time.LocalDate?>(null) }
@@ -110,7 +112,8 @@ fun DetailEditScreen(
         }
     }
 
-    Scaffold(
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
@@ -124,7 +127,7 @@ fun DetailEditScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showDelete = true }) {
+                    IconButton(onClick = { pendingDelete = true }) {
                         Icon(Icons.Default.Delete, contentDescription = "删除")
                     }
                 }
@@ -161,7 +164,8 @@ fun DetailEditScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+                .alpha(if (pendingDelete) 0.55f else 1f),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // ---------- 📝 内容卡 ----------
@@ -389,6 +393,20 @@ fun DetailEditScreen(
         }
     }
 
+    if (pendingDelete) {
+        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+            UndoBar(
+                message = "已删除 1 条",
+                onUndo = { pendingDelete = false },
+                onCommit = {
+                    vm.deleteNote(noteId)
+                    onBack()
+                }
+            )
+        }
+    }
+    }
+
     // 配图大图查看
     viewingImage?.let { rel ->
         AlertDialog(
@@ -407,23 +425,6 @@ fun DetailEditScreen(
         )
     }
 
-    if (showDelete) {
-        AlertDialog(
-            onDismissRequest = { showDelete = false },
-            title = { Text("删除这条记事？") },
-            text = { Text("将移入回收站（软删），同步后电脑端也会移入回收站，可恢复。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    vm.deleteNote(noteId)
-                    showDelete = false
-                    onBack()
-                }) { Text("删除") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDelete = false }) { Text("取消") }
-            }
-        )
-    }
 
     // 自定义提醒：日历选日期 → 拨盘选时间
     if (showDatePicker) {
