@@ -15,9 +15,10 @@ import com.luyuan.domain.Note
 import com.luyuan.data.ContactRepository
 import com.luyuan.data.NoteRepository
 
-/** 系统通知：提醒用高优先级渠道，点了跳进 App */
+/** 系统通知：渠道三分（手机二期 #7 通知三渠道）——提醒/联系人待办/日记各自可被用户在系统设置分控 */
 object ReminderNotifications {
     const val CHANNEL_ID = "luyuan_reminders"
+    const val CHANNEL_TODO = "luyuan_contact_todo"
 
     fun ensureChannel(context: Context) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -26,9 +27,14 @@ object ReminderNotifications {
                 NotificationChannel(CHANNEL_ID, "笔记提醒", NotificationManager.IMPORTANCE_HIGH)
             )
         }
+        if (nm.getNotificationChannel(CHANNEL_TODO) == null) {
+            nm.createNotificationChannel(
+                NotificationChannel(CHANNEL_TODO, "联系人待办提醒", NotificationManager.IMPORTANCE_HIGH)
+            )
+        }
     }
 
-    fun fire(context: Context, noteId: String, title: String, body: String) {
+    fun fire(context: Context, noteId: String, title: String, body: String, channelId: String = CHANNEL_ID) {
         ensureChannel(context)
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -37,7 +43,7 @@ object ReminderNotifications {
             context, noteId.hashCode(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val n = NotificationCompat.Builder(context, CHANNEL_ID)
+        val n = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_tile_mic)
             .setContentTitle(title)
             .setContentText(body)
@@ -113,7 +119,7 @@ object ReminderScheduler {
             .sortedBy { (_, _, at) -> at }
         for ((c, t, _) in todoOverdue.take(5)) {
             if (t.done || t.reminded == true) continue
-            ReminderNotifications.fire(context, "ctodo_${t.id}", "⏰ ${c.name}的待办", t.text.take(200))
+            ReminderNotifications.fire(context, "ctodo_${t.id}", "⏰ ${c.name}的待办", t.text.take(200), ReminderNotifications.CHANNEL_TODO)
             ContactRepository.markTodoReminded(context, c.id, t.id)
         }
     }
@@ -173,7 +179,8 @@ class ReminderReceiver : BroadcastReceiver() {
             val t = c.todos.firstOrNull { it.id == todoId } ?: return
             if (t.done || t.reminded == true) return
             ReminderNotifications.fire(
-                context, "ctodo_$todoId", "⏰ ${c.name}的待办", t.text.take(200)
+                context, "ctodo_$todoId", "⏰ ${c.name}的待办", t.text.take(200),
+                ReminderNotifications.CHANNEL_TODO
             )
             ContactRepository.markTodoReminded(context, contactId, todoId)
             ReminderScheduler.rescheduleAll(context)
