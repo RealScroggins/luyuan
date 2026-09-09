@@ -41,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -125,8 +126,9 @@ fun AppRoot(startDest: String) {
     val searchQuery by vm.searchQuery.collectAsStateWithLifecycle()
     val multiSelect by vm.multiSelect.collectAsStateWithLifecycle()
     // 超级输入框就地输入（路河拍板 09-09：点胶囊直接在胶囊里打字，不弹浮层；草稿走 prefs）
+    val ctx = LocalContext.current
     var inputMode by remember { mutableStateOf(false) }
-    val draftPrefs = remember { getSharedPreferences("luyuan_prefs", android.content.Context.MODE_PRIVATE) }
+    val draftPrefs = remember { ctx.getSharedPreferences("luyuan_prefs", android.content.Context.MODE_PRIVATE) }
     var inputText by remember { mutableStateOf(draftPrefs.getString("terminal_draft", "") ?: "") }
     var showSettings by remember { mutableStateOf(false) }
 
@@ -298,7 +300,7 @@ fun AppRoot(startDest: String) {
                             draftPrefs.edit().remove("terminal_draft").apply()
                             inputMode = false
                             android.widget.Toast.makeText(
-                                applicationContext, "✅ 已存为笔记", android.widget.Toast.LENGTH_SHORT
+                                ctx, "✅ 已存为笔记", android.widget.Toast.LENGTH_SHORT
                             ).show()
                         }
                     },
