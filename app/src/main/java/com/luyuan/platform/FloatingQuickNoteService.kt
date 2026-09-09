@@ -18,6 +18,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Toast
+import com.luyuan.R
 
 /**
  * 桌面小部件「记一笔」的真输入框：点组件弹出**悬浮速记条 v2**（不打开 App），
