@@ -5,10 +5,16 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.pager.rememberPagerState
@@ -34,6 +40,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -117,6 +124,11 @@ fun AppRoot(startDest: String) {
     var searchMode by remember { mutableStateOf(false) }
     val searchQuery by vm.searchQuery.collectAsStateWithLifecycle()
     val multiSelect by vm.multiSelect.collectAsStateWithLifecycle()
+    // 超级输入框就地输入（路河拍板 09-09：点胶囊直接在胶囊里打字，不弹浮层；草稿走 prefs）
+    var inputMode by remember { mutableStateOf(false) }
+    val draftPrefs = remember { getSharedPreferences("luyuan_prefs", android.content.Context.MODE_PRIVATE) }
+    var inputText by remember { mutableStateOf(draftPrefs.getString("terminal_draft", "") ?: "") }
+    var showSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(startDest) {
         when {
@@ -126,9 +138,9 @@ fun AppRoot(startDest: String) {
                 nav.navigate("record") { launchSingleTop = true }
             }
             startDest == "note" -> {
-                // 桌面小部件「记一笔」：落在笔记页并弹胶囊输入浮层（主页常驻输入框已由胶囊替代）
+                // 桌面小部件「记一笔」：落在笔记页并让胶囊直接进入输入态
                 pagerState.scrollToPage(0)
-                showQuickInput = true
+                inputMode = true
             }
             startDest.startsWith("tab:") -> {
                 // 桌面组件今日卡：跳到底栏对应页
@@ -204,7 +216,7 @@ fun AppRoot(startDest: String) {
                                     nav.navigate("record") { launchSingleTop = true }
                                 },
                                 onDetail = { id -> nav.navigate("detail/$id") },
-                                onSettings = { nav.navigate("settings") },
+                                onSettings = { showSettings = true }, // 左滑/顶栏⚙ → 右侧抽屉（不占满全屏）
                                 onTrash = { nav.navigate("trash") }
                             )
                             1 -> LedgerScreen(
@@ -257,7 +269,7 @@ fun AppRoot(startDest: String) {
                     TrashScreen(vm = vm, onBack = { nav.popBackStack() })
                 }
             }
-            // 悬浮终端胶囊（路河拍板：替代主页常驻输入框与搜索框，一框三用=输入/搜索/录音；多选时收起）
+            // 悬浮终端胶囊（路河拍板 09-09：点开就地输入不弹浮层；一框四用=输入/搜索/录音；多选时收起）
             if (currentRoute == "home" && !multiSelect) {
                 TerminalCapsule(
                     searchMode = searchMode,
@@ -265,9 +277,31 @@ fun AppRoot(startDest: String) {
                     onSearchQueryChange = { vm.setSearchQuery(it) },
                     onToggleSearch = {
                         searchMode = !searchMode
+                        inputMode = false
                         if (!searchMode) vm.setSearchQuery("")
                     },
-                    onQuickInput = { showQuickInput = true },
+                    inputMode = inputMode,
+                    inputValue = inputText,
+                    onInputValueChange = {
+                        inputText = it
+                        draftPrefs.edit().putString("terminal_draft", it).apply()
+                    },
+                    onToggleInput = {
+                        inputMode = !inputMode
+                        searchMode = false
+                    },
+                    onCommitInput = {
+                        val t = inputText.trim()
+                        if (t.isNotBlank()) {
+                            vm.addManual(t)
+                            inputText = ""
+                            draftPrefs.edit().remove("terminal_draft").apply()
+                            inputMode = false
+                            android.widget.Toast.makeText(
+                                applicationContext, "✅ 已存为笔记", android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
                     onRecord = {
                         vm.startWavRecording()
                         nav.navigate("record") { launchSingleTop = true }
@@ -277,10 +311,50 @@ fun AppRoot(startDest: String) {
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                 )
             }
+            // 笔记页右缘左滑 → 设置抽屉（路河拍板"左滑进设置"，二次催办）
+            if (currentRoute == "home" && pagerState.currentPage == 0 && !showSettings && !inputMode) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight()
+                        .width(24.dp)
+                        .pointerInput(Unit) {
+                            var total = 0f
+                            detectHorizontalDragGestures(
+                                onDragStart = { total = 0f },
+                                onDragEnd = { if (total < -70f) showSettings = true }
+                            ) { change, amount ->
+                                total += amount
+                                change.consume()
+                            }
+                        }
+                )
+            }
         }
     }
 
-    if (showQuickInput) {
-        QuickInputSheet(vm = vm, onDismiss = { showQuickInput = false })
+    // 设置抽屉（右侧滑入，不占满全屏——路河拍板 09-09）
+    if (showSettings) {
+        Box(Modifier.fillMaxSize()) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(androidx.compose.ui.graphics.Color(0x66000000))
+                    .clickable { showSettings = false }
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.88f)
+            ) {
+                SettingsScreen(
+                    vm = vm,
+                    onBack = { showSettings = false },
+                    onAsk = { showSettings = false; nav.navigate("ask") },
+                    onAskKey = { showSettings = false; nav.navigate("askkey") }
+                )
+            }
+        }
     }
 }

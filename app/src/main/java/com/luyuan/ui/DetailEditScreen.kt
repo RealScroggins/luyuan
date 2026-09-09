@@ -375,12 +375,17 @@ fun DetailEditScreen(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AssistChip(onClick = {
+                        // 一步选具体时间（任务单 App-3：默认今天，拨盘直接选时分）
+                        pickedDate = LocalDate.now()
+                        showTimePicker = true
+                    }, label = { Text("⏱ 选具体时间") })
+                    AssistChip(onClick = {
                         val now = LocalDateTime.now()
                         val iso = isoTomorrowAt(now.hour, now.minute)
                         vm.setReminder(noteId, iso)
                         remindAt = iso
                     }, label = { Text("明天此时") })
-                    AssistChip(onClick = { showDatePicker = true }, label = { Text("自定义时间…") })
+                    AssistChip(onClick = { showDatePicker = true }, label = { Text("自定义日期…") })
                     if (remindAt != null) {
                         AssistChip(onClick = {
                             vm.setReminder(noteId, null)

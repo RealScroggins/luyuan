@@ -43,10 +43,10 @@ import androidx.compose.ui.unit.sp
 import android.widget.Toast
 
 /**
- * 悬浮超级终端胶囊（方案 A §二-2 · 路河拍板：替代主页常驻输入框与搜索框）：
- * - 胶囊主体点击 = 快速输入浮层；🔍 = 搜索态（胶囊变搜索框，实时过滤笔记列表）；🎙 = 录音。
- * - 悬浮在列表上方、底栏之上；玻璃感用高透纸白渐变+大阴影近似（安卓无 backdrop-filter 等价物）。
- * - B3：输入浮层接意图识别（确定性规则 → PC /api/terminal 确认卡）。
+ * 悬浮超级终端胶囊（方案 A §二-2 · 路河拍板迭代）：一框四用，**就在胶囊里输入**（不弹浮层）。
+ * - 普通态：点主体 → 输入态（就地打字，回车/✅保存，草稿实时缓存）
+ * - 🔍 = 搜索态（实时过滤笔记）；🎙 = 录音
+ * - 玻璃感用高透纸白渐变+大阴影近似（安卓无 backdrop-filter 等价物）。
  */
 @Composable
 fun TerminalCapsule(
@@ -54,15 +54,19 @@ fun TerminalCapsule(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onToggleSearch: () -> Unit,
-    onQuickInput: () -> Unit,
+    inputMode: Boolean,
+    inputValue: String,
+    onInputValueChange: (String) -> Unit,
+    onToggleInput: () -> Unit,
+    onCommitInput: () -> Unit,
     onRecord: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val searchFocus = remember { FocusRequester() }
-    LaunchedEffect(searchMode) {
-        if (searchMode) {
-            kotlinx.coroutines.delay(120) // 等胶囊形变稳定再拉键盘焦点
-            searchFocus.requestFocus()
+    val focusReq = remember { FocusRequester() }
+    LaunchedEffect(searchMode || inputMode) {
+        if (searchMode || inputMode) {
+            kotlinx.coroutines.delay(120)
+            focusReq.requestFocus()
         }
     }
     Row(
@@ -77,8 +81,32 @@ fun TerminalCapsule(
             .border(1.dp, Color(0x1A224A3A), RoundedCornerShape(999.dp))
             .padding(start = 18.dp, end = 8.dp, top = 4.dp, bottom = 4.dp)
     ) {
-        if (searchMode) {
-            // 搜索态：胶囊本体即搜索框，输入实时过滤（点 ✕ 退出并清空）
+        val editing = inputMode || searchMode
+        if (inputMode) {
+            // 输入态：胶囊本体即输入框（路河拍板：不要额外浮层）
+            BasicTextField(
+                value = inputValue,
+                onValueChange = onInputValueChange,
+                singleLine = true,
+                textStyle = TextStyle(fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { if (inputValue.isNotBlank()) onCommitInput() }),
+                decorationBox = { inner ->
+                    Box(contentAlignment = Alignment.CenterStart, modifier = Modifier.fillMaxWidth()) {
+                        if (inputValue.isEmpty()) {
+                            Text("记一笔，回车保存…", fontSize = 14.sp, color = LuyuanColors.Ink3)
+                        }
+                        inner
+                    }
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focusReq)
+                    .padding(vertical = 12.dp)
+            )
+        } else if (searchMode) {
+            // 搜索态：实时过滤笔记（点 ✕ 退出并清空）
             BasicTextField(
                 value = searchQuery,
                 onValueChange = onSearchQueryChange,
@@ -98,7 +126,7 @@ fun TerminalCapsule(
                 },
                 modifier = Modifier
                     .weight(1f)
-                    .focusRequester(searchFocus)
+                    .focusRequester(focusReq)
                     .padding(vertical = 12.dp)
             )
         } else {
@@ -108,30 +136,56 @@ fun TerminalCapsule(
                 color = LuyuanColors.Ink3,
                 modifier = Modifier
                     .weight(1f)
-                    .clickable { onQuickInput() }
+                    .clickable { onToggleInput() }
             )
         }
-        // 搜索 / 退出搜索
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(38.dp)
-                .background(LuyuanColors.Green100, CircleShape)
-                .clickable { onToggleSearch() }
-        ) {
-            Text(if (searchMode) "✕" else "🔍", fontSize = 15.sp)
-        }
-        Spacer(Modifier.width(6.dp))
-        // 录音（搜索态隐藏防误触）
-        if (!searchMode) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(38.dp)
-                    .background(MaterialTheme.colorScheme.primary, CircleShape)
-                    .clickable { onRecord() }
-            ) {
-                Text("🎙", fontSize = 15.sp)
+        when {
+            inputMode -> {
+                // ✅ 保存
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                        .clickable { if (inputValue.isNotBlank()) onCommitInput() }
+                ) { Text("✓", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold) }
+                Spacer(Modifier.width(6.dp))
+                // ✕ 退出输入态
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .background(LuyuanColors.Green100, CircleShape)
+                        .clickable { onToggleInput() }
+                ) { Text("✕", fontSize = 14.sp, color = LuyuanColors.Ink2) }
+            }
+            searchMode -> {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .background(LuyuanColors.Green100, CircleShape)
+                        .clickable { onToggleSearch() }
+                ) { Text("✕", fontSize = 15.sp) }
+            }
+            else -> {
+                // 🔍 搜索
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .background(LuyuanColors.Green100, CircleShape)
+                        .clickable { onToggleSearch() }
+                ) { Text("🔍", fontSize = 15.sp) }
+                Spacer(Modifier.width(6.dp))
+                // 🎙 录音
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                        .clickable { onRecord() }
+                ) { Text("🎙", fontSize = 15.sp) }
             }
         }
     }

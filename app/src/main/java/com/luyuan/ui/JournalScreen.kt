@@ -7,6 +7,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -249,38 +251,49 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(top = 2.dp)
                 )
-                for (d in pastDiaries.take(30)) {
-                    val day = journalParseDay(d.created_at)
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { viewingDiary = d }
-                    ) {
-                        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    day?.let { journalDayLabel(it) } ?: d.created_at.take(10),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
-                                )
-                                if (d.images.isNotEmpty()) {
+                // 2:3 小卡片墙（路河 09-09 19:17/19:19：日记卡改两列小卡）
+                for (row in pastDiaries.take(30).chunked(2)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        for (d in row) {
+                            val day = journalParseDay(d.created_at)
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .aspectRatio(2f / 3f)
+                                    .clickable { viewingDiary = d }
+                            ) {
+                                Column(modifier = Modifier.fillMaxSize().padding(10.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            day?.let { journalDayLabel(it) } ?: d.created_at.take(10),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        if (d.images.isNotEmpty()) {
+                                            Text(
+                                                "🖼${d.images.size}",
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.height(4.dp))
                                     Text(
-                                        "  🖼${d.images.size}",
+                                        d.text.replace("\n", " ").take(90) + if (d.text.length > 90) "…" else "",
                                         fontSize = 12.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 7,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                     )
                                 }
                             }
-                            Text(
-                                d.text.replace("\n", " ").take(60) + if (d.text.length > 60) "…" else "",
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
                         }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
                 }
             }
