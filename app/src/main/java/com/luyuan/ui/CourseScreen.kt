@@ -103,19 +103,11 @@ fun CourseScreen(vm: LuyuanViewModel, onAsk: () -> Unit, onTrash: () -> Unit) {
         ) {
             if (courses.isEmpty()) {
                 item {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp)
-                    ) {
-                        Text("📅", fontSize = 40.sp)
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            "还没有课程表\n电脑端导入课表截图后，会自动同步到这里",
-                            fontSize = 13.sp,
-                            color = LuyuanColors.Ink3,
-                            lineHeight = 20.sp
-                        )
-                    }
+                    EmptyState(
+                        icon = EmptyIconCourse,
+                        title = "还没有课程表",
+                        subtitle = "电脑端导入课表截图后，会自动同步到这里"
+                    )
                 }
             }
 
@@ -224,12 +216,7 @@ fun CourseScreen(vm: LuyuanViewModel, onAsk: () -> Unit, onTrash: () -> Unit) {
             }
             if (dayCourses.isEmpty()) {
                 item {
-                    Text(
-                        "这天没有课",
-                        fontSize = 12.sp,
-                        color = LuyuanColors.Ink3,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
+                    EmptyState(icon = EmptyIconCourse, title = "这天没有课")
                 }
             }
             for (c in dayCourses) {

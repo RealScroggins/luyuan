@@ -93,13 +93,12 @@ fun PeopleScreen(vm: LuyuanViewModel) {
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
             )
             if (filtered.isEmpty()) {
-                Text(
-                    if (contacts.isEmpty())
-                        "还没有联系人。\n电脑端人脉页添加后会自动同步到这里（共享目录 contacts/ 文件夹）。"
-                    else
-                        "没有匹配「${query.trim()}」的联系人",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(30.dp)
+                EmptyState(
+                    icon = if (contacts.isEmpty()) EmptyIconPeople else EmptyIconSearch,
+                    title = if (contacts.isEmpty()) "还没有联系人" else "没有匹配「${query.trim()}」的联系人",
+                    subtitle = if (contacts.isEmpty())
+                        "电脑端人脉页添加后会自动同步到这里（共享目录 contacts/ 文件夹）。"
+                    else null
                 )
             }
             Box(modifier = Modifier.fillMaxSize()) {

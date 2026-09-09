@@ -491,6 +491,14 @@ fun NoteListScreen(
                             )
                         }
                     }
+                    if (groups.isEmpty()) {
+                        item {
+                            if (query.isNotBlank())
+                                EmptyState(EmptyIconSearch, "没有匹配的笔记", "换个关键词试试")
+                            else
+                                EmptyState(EmptyIconNote, "还没有笔记", "在顶部输入框随手记一条，回车即存")
+                        }
+                    }
                 }
             }
             if (pullConn.overPull > 2f) {

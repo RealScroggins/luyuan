@@ -313,21 +313,11 @@ private fun ExpenseRow(e: Expense) {
 
 @Composable
 private fun LedgerEmpty() {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 40.dp)
-    ) {
-        Text("💰", fontSize = 40.sp)
-        Spacer(Modifier.height(10.dp))
-        Text(
-            "还没有账单\n电脑端截图识别 / 手动补记的账，会自动同步到这里",
-            fontSize = 13.sp,
-            color = LuyuanColors.Ink3,
-            lineHeight = 20.sp
-        )
-    }
+    EmptyState(
+        icon = EmptyIconLedger,
+        title = "还没有账单",
+        subtitle = "电脑端截图识别 / 手动补记的账，会自动同步到这里"
+    )
 }
 
 // ---------- 纯函数（无状态，供本页与测试复用） ----------

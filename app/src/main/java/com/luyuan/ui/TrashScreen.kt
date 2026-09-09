@@ -129,11 +129,7 @@ fun TrashScreen(vm: LuyuanViewModel, onBack: () -> Unit) {
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
             )
             if (trash.isEmpty()) {
-                Text(
-                    "回收站是空的",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(40.dp)
-                )
+                EmptyState(icon = EmptyIconTrash, title = "回收站是空的")
             }
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
