@@ -78,8 +78,8 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeLineJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.text.input.ImeAction
@@ -99,11 +99,10 @@ private val WechatIcon: ImageVector by lazy {
     ImageVector.Builder("wechat", 22.dp, 22.dp, 22f, 22f).apply {
         addPath(
             pathData = PathParser().parsePathString(WECHAT_PATH).toNodes(),
-            fillColor = Color.Transparent,
-            strokeColor = Color.Black,
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color.Black),
             strokeLineWidth = 1.6f,
-            strokeLineCap = StrokeCap.Round,
-            strokeLineJoin = StrokeLineJoin.Round
+            strokeLineCap = StrokeCap.Round
         )
     }.build()
 }
@@ -112,11 +111,10 @@ private val QqIcon: ImageVector by lazy {
     ImageVector.Builder("qq", 22.dp, 22.dp, 22f, 22f).apply {
         addPath(
             pathData = PathParser().parsePathString(QQ_PATH).toNodes(),
-            fillColor = Color.Transparent,
-            strokeColor = Color.Black,
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color.Black),
             strokeLineWidth = 1.6f,
-            strokeLineCap = StrokeCap.Round,
-            strokeLineJoin = StrokeLineJoin.Round
+            strokeLineCap = StrokeCap.Round
         )
     }.build()
 }
