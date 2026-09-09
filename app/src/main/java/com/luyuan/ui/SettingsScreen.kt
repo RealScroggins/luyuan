@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -23,7 +24,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -53,7 +53,7 @@ import kotlinx.coroutines.withContext
 /** 设置页 v2（路河拍板重排）：分区卡片化——📁目录/🔐权限/⌨️实体键/📚模型/🤖问路远/📱保活/ℹ️关于 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = {}) {
+fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = {}, onAskKey: () -> Unit = {}) {
     val context = LocalContext.current
     val allFiles = PermissionHelper.hasAllFiles(context)
     val audio = PermissionHelper.hasAudio(context)
@@ -62,11 +62,8 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = 
     var candidates by remember { mutableStateOf(listOf<StorageLocator.Candidate>()) }
     var scanning by remember { mutableStateOf(false) }
 
-    // 问路远（A2）：Key 只存本机 App 私有目录（隐私红线，永不进同步目录/仓库）
-    val askCfg = remember { AskRemote.loadConfig(context) }
-    var askKey by remember { mutableStateOf(askCfg.key) }
-    var askBase by remember { mutableStateOf(askCfg.baseUrl) }
-    var askSaved by remember { mutableStateOf(false) }
+    // 问路远（A2）：Key 编辑已拆到独立子页 AskKeyScreen（#4），此页只放行跳转
+
 
     suspend fun rescan() {
         scanning = true
@@ -249,31 +246,25 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = 
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                OutlinedTextField(
-                    value = askKey,
-                    onValueChange = { askKey = it; askSaved = false },
-                    label = { Text("API Key") },
-                    singleLine = true,
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = askBase,
-                    onValueChange = { askBase = it; askSaved = false },
-                    label = { Text("接口地址（默认 DeepSeek）") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-                    Button(onClick = {
-                        AskRemote.saveConfig(context, askKey, askBase)
-                        askSaved = true
-                    }) { Text(if (askSaved) "✅ 已保存" else "保存") }
-                    Button(
-                        onClick = onAsk,
-                        enabled = AskRemote.loadConfig(context).ready || askKey.isNotBlank()
-                    ) { Text("开始对话") }
+                // #4：Key 编辑拆到独立子页（隔离规则收口，聊天历史不进此页）
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onAskKey() }
+                        .padding(vertical = 10.dp)
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("问路远 · 钥匙", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = LuyuanColors.Ink1)
+                        Text("Key / 接口地址 / 模型 / 连通性自检", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = LuyuanColors.Green700)
                 }
+                Button(
+                    onClick = onAsk,
+                    enabled = AskRemote.loadConfig(context).ready,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("开始对话") }
             }
 
             // ---------- 📱 vivo 保活指引（v1.12）：提醒/通知失灵的自查路径 ----------

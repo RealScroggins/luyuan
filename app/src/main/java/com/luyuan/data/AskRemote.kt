@@ -272,4 +272,47 @@ object AskRemote {
             "请求失败（$code）：$snippet"
         }
     }
+
+    /** 连通性自检（#4 钥匙子页）：发一条 max_tokens=1 的探测请求，返回人话化结果。 */
+    data class CheckResult(val ok: Boolean, val message: String, val latencyMs: Long)
+
+    fun checkConnectivity(context: Context): CheckResult {
+        val cfg = loadConfig(context)
+        if (!cfg.ready) return CheckResult(false, "还没填 API Key", 0)
+        val model = modelByKey(cfg.modelKey)
+        val start = System.currentTimeMillis()
+        return try {
+            val payload = buildJsonObject {
+                put("model", model.id)
+                put("messages", buildJsonArray {
+                    add(buildJsonObject { put("role", "user"); put("content", "ping") })
+                })
+                if (model.thinking != null) {
+                    put("thinking", buildJsonObject { put("type", if (model.thinking) "enabled" else "disabled") })
+                }
+                if (model.thinking != true) put("temperature", 0.4)
+                put("max_tokens", 1)
+            }
+            val conn = URL(cfg.baseUrl + "/chat/completions").openConnection() as HttpURLConnection
+            try {
+                conn.requestMethod = "POST"
+                conn.connectTimeout = 15000
+                conn.readTimeout = 15000
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Authorization", "Bearer " + cfg.key)
+                conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                val code = conn.responseCode
+                val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                    ?.bufferedReader()?.readText().orEmpty()
+                val latency = System.currentTimeMillis() - start
+                if (code !in 200..299) return CheckResult(false, humanError(code, body), latency)
+                CheckResult(true, "正常 · ${latency}ms", latency)
+            } finally {
+                conn.disconnect()
+            }
+        } catch (e: Exception) {
+            CheckResult(false, "连不上：${e.message ?: "网络错误"}", System.currentTimeMillis() - start)
+        }
+    }
 }

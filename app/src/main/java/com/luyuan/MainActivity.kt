@@ -56,6 +56,7 @@ import com.luyuan.ui.PeopleScreen
 import com.luyuan.ui.QuickInputSheet
 import com.luyuan.ui.RecordScreen
 import com.luyuan.ui.SettingsScreen
+import com.luyuan.ui.AskKeyScreen
 import com.luyuan.ui.TerminalCapsule
 import com.luyuan.ui.TrashScreen
 import kotlinx.coroutines.launch
@@ -214,6 +215,14 @@ fun AppRoot(startDest: String) {
                 }
                 composable("settings") {
                     SettingsScreen(
+                        vm = vm,
+                        onBack = { nav.popBackStack() },
+                        onAsk = { nav.navigate("ask") },
+                        onAskKey = { nav.navigate("askkey") }
+                    )
+                }
+                composable("askkey") {
+                    AskKeyScreen(
                         vm = vm,
                         onBack = { nav.popBackStack() },
                         onAsk = { nav.navigate("ask") }
