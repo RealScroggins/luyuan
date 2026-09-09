@@ -80,6 +80,17 @@
             android:name=".platform.FloatingQuickNoteService"
             android:exported="false" />
 
+        <!-- 通知自动记账：监听微信/支付宝支付通知 → 待确认（用户点 ✓ 才真入账） -->
+        <service
+            android:name=".platform.PaymentNotificationListener"
+            android:exported="false"
+            android:label="路远记账通知监听"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <service
             android:name=".platform.QuickRecordTile"
             android:exported="true"

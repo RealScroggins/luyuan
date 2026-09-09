@@ -21,13 +21,20 @@ import java.util.Locale
 /**
  * 桌面小部件「路远·今日卡」：下一节课 / 今天待办 / 本月支出一眼看全，
  * 4×3 时多显示「最近 3 条」；底部记一笔（桌面速记）/ 说一句（进录音）。
- * 静态部件：updatePeriodMillis=0，仅在添加、重启、或 App 发 WIDGET_REFRESH 时重算。
+ * 静态部件：updatePeriodMillis=30 分钟（系统兜底自愈），另在添加、重启、调尺寸、或 App 发 WIDGET_REFRESH 时重算。
  * 深链：课程块→page=course，待办→page=notes，支出→page=ledger，最近条→detail/{id}。
  */
 class TodayWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
-        for (id in ids) render(context, manager, id)
+        for (id in ids) renderSafe(context, manager, id)
+    }
+
+    /** 拖动调整组件大小（4×2 ↔ 4×3）时重算「最近 3 条」显隐 */
+    override fun onAppWidgetOptionsChanged(
+        context: Context, manager: AppWidgetManager, appWidgetId: Int, newOptions: android.os.Bundle
+    ) {
+        renderSafe(context, manager, appWidgetId)
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -35,17 +42,59 @@ class TodayWidgetProvider : AppWidgetProvider() {
         if (intent.action == ACTION_REFRESH) {
             val mgr = AppWidgetManager.getInstance(context)
             val ids = mgr.getAppWidgetIds(ComponentName(context, TodayWidgetProvider::class.java))
-            for (id in ids) render(context, mgr, id)
+            for (id in ids) renderSafe(context, mgr, id)
+        }
+    }
+
+    /**
+     * 安全渲染入口：widget 进程由系统直接拉起（不经过 MainActivity，CrashLogger 未安装），
+     * 任何未捕获异常都会让桌面显示空白且不留日志。这里全量兜底——
+     * 崩了也渲染「极简错误卡」，并把异常栈写进共享目录 widget_err.txt（随 Syncthing 回传电脑）。
+     */
+    private fun renderSafe(context: Context, manager: AppWidgetManager, appWidgetId: Int) {
+        try {
+            render(context, manager, appWidgetId)
+        } catch (e: Throwable) {
+            logWidgetError(context, e)
+            try {
+                val fallback = RemoteViews(context.packageName, R.layout.widget_error)
+                fallback.setOnClickPendingIntent(
+                    R.id.widget_error_root,
+                    PendingIntent.getActivity(
+                        context, 4301,
+                        Intent(context, MainActivity::class.java),
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                )
+                manager.updateAppWidget(appWidgetId, fallback)
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    /** 异常栈落盘到共享目录（不依赖 UncaughtExceptionHandler） */
+    private fun logWidgetError(context: Context, e: Throwable) {
+        try {
+            val f = java.io.File(StorageLocator.getRoot(context), "widget_err.txt")
+            val sw = java.io.StringWriter()
+            e.printStackTrace(java.io.PrintWriter(sw))
+            val prev = if (f.exists() && f.length() < 100_000) f.readText() else ""
+            f.writeText(
+                (prev + "==== " + java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.CHINA)
+                    .format(java.util.Date()) + "\n" + sw + "\n").takeLast(100_000)
+            )
+        } catch (_: Throwable) {
         }
     }
 
     private fun render(context: Context, manager: AppWidgetManager, appWidgetId: Int) {
         val views = RemoteViews(context.packageName, R.layout.widget_today)
 
-        val courses = V2EntityRepository.listCourses(context)
-        val contacts = ContactRepository.listContacts(context)
-        val notes = NoteRepository.listNotes(context).filter { !it.deleted }
-        val expenses = V2EntityRepository.listExpenses(context)
+        // 数据逐项防御：任一仓库异常只丢该项数据，不拖垮整卡渲染
+        val courses = try { V2EntityRepository.listCourses(context) } catch (_: Throwable) { emptyList() }
+        val contacts = try { ContactRepository.listContacts(context) } catch (_: Throwable) { emptyList() }
+        val notes = try { NoteRepository.listNotes(context) } catch (_: Throwable) { emptyList() }
+        val expenses = try { V2EntityRepository.listExpenses(context) } catch (_: Throwable) { emptyList() }
 
         // 日期
         views.setTextViewText(

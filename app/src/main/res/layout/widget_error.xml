@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 今日卡渲染异常时的兜底卡：保证桌面上永远有一张可点的卡（点=打开 App），
+     而不是一块空白。真异常栈在共享目录 widget_err.txt，随 Syncthing 回传电脑。 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_error_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_today_bg">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_vertical"
+        android:padding="14dp"
+        android:text="路远 · 今日卡暂时载入失败\n点这里打开 App 会自动恢复"
+        android:textColor="#224A3A"
+        android:textSize="13sp" />
+</FrameLayout>
