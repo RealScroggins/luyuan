@@ -9,15 +9,14 @@ import com.luyuan.MainActivity
 
 /**
  * 无障碍服务全局按键监听（安卓唯一合法的全局按键通道，无需 adb）。
- * 唤录音组合键（路河 2026-09-08 拍板）：**电源键 → 800ms 内按音量加**。
- * 旧「双击音量减」已弃用（误触率高：长按调音量时系统连发 ACTION_DOWN 被当成双击）。
+ * 唤录音组合键（路河 2026-09-10 拍板）：**同时按「音量加 + 音量减」**。
+ * 旧「电源键+音量加」弃用（部分 ROM 不下发电源键事件给第三方，实锤无反应）。
  * 后台拉起界面依赖「显示在其他应用上层」权限（Settings.canDrawOverlays）。
- * ⚠️ 已知风险：部分 ROM 不把 KEYCODE_POWER 下发给第三方无障碍服务——若组合键无反应，
- * 兜底方案=三连音量加（晨报已登记，等真机反馈）。
  */
 class VolumeKeyService : AccessibilityService() {
 
-    private var lastPowerAt = 0L
+    private var volUpDown = false
+    private var volDownDown = false
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -32,21 +31,36 @@ class VolumeKeyService : AccessibilityService() {
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
-        // 只认首次按下：长按的 repeat 连发不算（修"调音量误触"根因）
-        if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount > 0) return false
-        val now = SystemClock.uptimeMillis()
+        // 长按的 repeat 连发不算（修"调音量误触"根因）
+        if (event.repeatCount > 0) return false
+        val down = event.action == KeyEvent.ACTION_DOWN
+        val up = event.action == KeyEvent.ACTION_UP
         when (event.keyCode) {
-            KeyEvent.KEYCODE_POWER -> lastPowerAt = now
-
             KeyEvent.KEYCODE_VOLUME_UP -> {
-                if (now - lastPowerAt < COMBO_WINDOW_MS) {
-                    lastPowerAt = 0L
-                    launchRecord()
-                    return true // 组合成功，消费按键不让音量变
+                if (down) {
+                    volUpDown = true
+                    if (volDownDown) { fire(); return true }
+                } else if (up) {
+                    volUpDown = false
+                }
+            }
+            KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                if (down) {
+                    volDownDown = true
+                    if (volUpDown) { fire(); return true }
+                } else if (up) {
+                    volDownDown = false
                 }
             }
         }
         return false
+    }
+
+    /** 两键同按成功：消费按键（不让音量变）并唤起录音 */
+    private fun fire() {
+        volUpDown = false
+        volDownDown = false
+        launchRecord()
     }
 
     private fun launchRecord() {
@@ -65,8 +79,6 @@ class VolumeKeyService : AccessibilityService() {
     override fun onInterrupt() {}
 
     companion object {
-        /** 电源键按下后在此窗口内按音量加=唤录音 */
-        private const val COMBO_WINDOW_MS = 800L
         var running = false
             private set
 

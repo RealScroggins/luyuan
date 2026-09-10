@@ -193,7 +193,7 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = 
                     android.provider.Settings.canDrawOverlays(context)
                 }
                 Text(
-                    "先按电源键，800ms 内按音量加 = 直接开始录音（录完回电脑转文字，不用本地模型）。",
+                    "同时按「音量加 + 音量减」= 直接开始录音（录完回电脑转文字，不用本地模型）。",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Text(
@@ -203,7 +203,7 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = 
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    "组合成功时不会改变音量。若组合键没反应（个别机型不向第三方下发电源键事件）或被 vivo 后台清理：请到管家里允许路远自启动并锁定后台，然后反馈给路远换兜底方案。",
+                    "组合成功时不会改变音量。若没反应或被 vivo 后台清理：请到管家里允许路远自启动并锁定后台，然后反馈给路远。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

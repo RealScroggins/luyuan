@@ -297,6 +297,11 @@ fun NoteListScreen(
     var selected by remember { mutableStateOf(setOf<String>()) }
     // 多选状态上报 VM（路河拍板：多选时 MainActivity 收起悬浮胶囊）
     LaunchedEffect(selecting) { vm.setMultiSelect(selecting) }
+    // 多选界面返回手势 = 退多选，不退出应用（路河 09-10 反馈）
+    androidx.activity.compose.BackHandler(enabled = selecting) {
+        selecting = false
+        selected = emptySet()
+    }
     val context = LocalContext.current
     val allFilesGranted = PermissionHelper.hasAllFiles(context)
     val scope = rememberCoroutineScope()
@@ -360,6 +365,17 @@ fun NoteListScreen(
                             }
                         ) {
                             Icon(Icons.Default.Share, contentDescription = "分享选中")
+                        }
+                        IconButton(
+                            enabled = selected.size >= 2,
+                            onClick = {
+                                // 一键整理：合并选中笔记为一条（原笔记进回收站可恢复）
+                                vm.mergeNotes(selected)
+                                selected = emptySet()
+                                selecting = false
+                            }
+                        ) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = "整理合并")
                         }
                         IconButton(
                             enabled = selected.isNotEmpty(),

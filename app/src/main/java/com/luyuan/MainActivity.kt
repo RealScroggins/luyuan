@@ -121,16 +121,33 @@ fun AppRoot(startDest: String) {
     val pagerState = rememberPagerState(initialPage = 0) { 5 }
     val navInteraction = remember { MutableInteractionSource() }
     val navScale = rememberPressScale(navInteraction)
-    var showQuickInput by remember { mutableStateOf(false) }
     var searchMode by remember { mutableStateOf(false) }
     val searchQuery by vm.searchQuery.collectAsStateWithLifecycle()
     val multiSelect by vm.multiSelect.collectAsStateWithLifecycle()
-    // 超级输入框就地输入（路河拍板 09-09：点胶囊直接在胶囊里打字，不弹浮层；草稿走 prefs）
     val ctx = LocalContext.current
-    var inputMode by remember { mutableStateOf(false) }
+    // 超级输入框 v3（Q13 拍板）：点胶囊向下展开，展开态才有输入框+三按钮；草稿走 prefs
+    var expanded by remember { mutableStateOf(false) }
     val draftPrefs = remember { ctx.getSharedPreferences("luyuan_prefs", android.content.Context.MODE_PRIVATE) }
     var inputText by remember { mutableStateOf(draftPrefs.getString("terminal_draft", "") ?: "") }
     var showSettings by remember { mutableStateOf(false) }
+
+    // 图片按钮（Q13 融图片不融表情）：选图 → 压缩落 images/ → 带配图存一条笔记
+    val pickImage = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val rel = com.luyuan.data.NoteRepository.importImage(ctx, uri)
+                if (rel != null) {
+                    com.luyuan.data.NoteRepository.createManual(
+                        ctx, "🖼 图片速记", tags = listOf("分享"), images = listOf(rel)
+                    )
+                    expanded = false
+                    android.widget.Toast.makeText(ctx, "✅ 图片已存入路远", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
 
     LaunchedEffect(startDest) {
         when {
@@ -140,9 +157,9 @@ fun AppRoot(startDest: String) {
                 nav.navigate("record") { launchSingleTop = true }
             }
             startDest == "note" -> {
-                // 桌面小部件「记一笔」：落在笔记页并让胶囊直接进入输入态
+                // 桌面小部件「记一笔」：落在笔记页并让胶囊直接展开输入
                 pagerState.scrollToPage(0)
-                inputMode = true
+                expanded = true
             }
             startDest.startsWith("tab:") -> {
                 // 桌面组件今日卡：跳到底栏对应页
@@ -271,38 +288,56 @@ fun AppRoot(startDest: String) {
                     TrashScreen(vm = vm, onBack = { nav.popBackStack() })
                 }
             }
-            // 悬浮终端胶囊（路河拍板 09-09：点开就地输入不弹浮层；一框四用=输入/搜索/录音；多选时收起）
+            // 点击空白处收起展开态 + 收键盘（路河 09-10 反馈：别只靠输入法收起）
+            val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+            if (expanded) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            expanded = false
+                            searchMode = false
+                            focusManager.clearFocus()
+                        }
+                )
+            }
+            // 悬浮终端胶囊 v3（Q13 拍板：收起态仅语音钮，点开向下展开；多选时收起）
             if (currentRoute == "home" && !multiSelect) {
                 TerminalCapsule(
+                    expanded = expanded,
+                    onToggleExpanded = { expanded = !expanded },
                     searchMode = searchMode,
                     searchQuery = searchQuery,
                     onSearchQueryChange = { vm.setSearchQuery(it) },
                     onToggleSearch = {
                         searchMode = !searchMode
-                        inputMode = false
                         if (!searchMode) vm.setSearchQuery("")
                     },
-                    inputMode = inputMode,
-                    inputValue = inputText,
-                    onInputValueChange = {
+                    inputText = inputText,
+                    onInputTextChange = {
                         inputText = it
                         draftPrefs.edit().putString("terminal_draft", it).apply()
                     },
-                    onToggleInput = {
-                        inputMode = !inputMode
-                        searchMode = false
-                    },
-                    onCommitInput = {
+                    onCommitDiary = {
                         val t = inputText.trim()
                         if (t.isNotBlank()) {
-                            vm.addManual(t)
+                            vm.saveDiary(t)
                             inputText = ""
                             draftPrefs.edit().remove("terminal_draft").apply()
-                            inputMode = false
-                            android.widget.Toast.makeText(
-                                ctx, "✅ 已存为笔记", android.widget.Toast.LENGTH_SHORT
-                            ).show()
+                            expanded = false
+                            focusManager.clearFocus()
+                            scope.launch { pagerState.animateScrollToPage(3) } // 存日记并跳日记页
                         }
+                    },
+                    onPickImage = {
+                        pickImage.launch(
+                            androidx.activity.result.PickVisualMediaRequest(
+                                androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
+                            )
+                        )
                     },
                     onRecord = {
                         vm.startWavRecording()
@@ -313,18 +348,18 @@ fun AppRoot(startDest: String) {
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                 )
             }
-            // 笔记页右缘左滑 → 设置抽屉（路河拍板"左滑进设置"，二次催办）
-            if (currentRoute == "home" && pagerState.currentPage == 0 && !showSettings && !inputMode) {
+            // 笔记页【左缘】右滑 → 设置抽屉（路河 09-10 拍板：从左边呼出，别跟右边记账页手势冲突）
+            if (currentRoute == "home" && pagerState.currentPage == 0 && !showSettings && !expanded) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.CenterEnd)
+                        .align(Alignment.CenterStart)
                         .fillMaxHeight()
                         .width(24.dp)
                         .pointerInput(Unit) {
                             var total = 0f
                             detectHorizontalDragGestures(
                                 onDragStart = { total = 0f },
-                                onDragEnd = { if (total < -70f) showSettings = true }
+                                onDragEnd = { if (total > 70f) showSettings = true }
                             ) { change, amount ->
                                 total += amount
                                 change.consume()
@@ -335,7 +370,7 @@ fun AppRoot(startDest: String) {
         }
     }
 
-    // 设置抽屉（右侧滑入，不占满全屏——路河拍板 09-09）
+    // 设置抽屉（左侧滑入，不占满全屏——路河 09-10 拍板）
     if (showSettings) {
         Box(Modifier.fillMaxSize()) {
             Box(
@@ -346,7 +381,7 @@ fun AppRoot(startDest: String) {
             )
             Box(
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
+                    .align(Alignment.CenterStart)
                     .fillMaxHeight()
                     .fillMaxWidth(0.88f)
             ) {

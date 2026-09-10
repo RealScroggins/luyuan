@@ -337,6 +337,21 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** 一键整理（路河 09-10）：选中多条笔记 → 按时间拼成一条（打「整理」标签），原笔记软删进回收站可恢复 */
+    fun mergeNotes(ids: Collection<String>) {
+        if (ids.size < 2) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val ns = ids.mapNotNull { NoteRepository.getNote(ctx, it) }
+                .sortedBy { it.created_at }
+            if (ns.size >= 2) {
+                val merged = ns.joinToString("\n\n") { it.text }
+                NoteRepository.createManual(ctx, merged, tags = listOf("整理"))
+                for (n in ns) NoteRepository.softDelete(ctx, n.id)
+            }
+            _notes.value = NoteRepository.listNotes(ctx)
+        }
+    }
+
     fun refreshTrash() {
         viewModelScope.launch(Dispatchers.IO) {
             _trash.value = NoteRepository.listTrash(ctx)
