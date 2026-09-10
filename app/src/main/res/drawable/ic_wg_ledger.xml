@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 今日卡·统计行「本月支出」图标：钱包（深绿，视觉稿 widget W1 data-ic="ledger"） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="22dp"
+    android:viewportWidth="22"
+    android:viewportHeight="22">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#2D5A48"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M3.5,7v9a2,2 0 0 0 2,2h11a2,2 0 0 0 2,-2V7" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#2D5A48"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M3.5,7l1.6,-3h12l1.6,3" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#2D5A48"
+        android:strokeWidth="1.6"
+        android:pathData="M8.2,11.1a1.4,1.4 0 1 1 0,2.8a1.4,1.4 0 0 1 0,-2.8z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#2D5A48"
+        android:strokeWidth="1.6"
+        android:pathData="M13.8,11.1a1.4,1.4 0 1 1 0,2.8a1.4,1.4 0 0 1 0,-2.8z" />
+</vector>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 今日卡·次键「说一句」图标：麦克风（深绿，视觉稿 widget W1 data-ic="mic"） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="22dp"
+    android:viewportWidth="22"
+    android:viewportHeight="22">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#224A3A"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M8.2,5.8a2.8,2.8 0 0 1 5.6,0v4.4a2.8,2.8 0 0 1 -5.6,0z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#224A3A"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M5.5,10.5a5.5,5.5 0 0 0 11,0" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#224A3A"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:pathData="M11,16v3M8,19.5h6" />
+</vector>

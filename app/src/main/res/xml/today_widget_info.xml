@@ -5,12 +5,12 @@
      与速记条逐项对齐（速记条：minWidth=180dp/minHeight=40dp/updatePeriodMillis=0/
      initialLayout=@layout/widget_quick/resizeMode=horizontal|vertical/widgetCategory=home_screen）：
        - updatePeriodMillis 由 1800000 改为 0  ← 关键：非 0 在部分 vivo ROM 会被拉进受限渲染通道
-       - initialLayout 指向扁平布局 widget_today_flat
+       - initialLayout 指向视觉稿对齐版 widget_today_v2
        - 不写 previewLayout / targetCell / minResize / description（速记条都没写） -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="250dp"
     android:minHeight="110dp"
     android:updatePeriodMillis="0"
-    android:initialLayout="@layout/widget_today_flat"
+    android:initialLayout="@layout/widget_today_v2"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen" />

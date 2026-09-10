@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 今日卡·主键「记一笔」图标：铅笔（白色，视觉稿 widget W1 data-ic="edit"） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="22dp"
+    android:viewportWidth="22"
+    android:viewportHeight="22">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M4.5,3.5h13a1,1 0 0 1 1,1v13a1,1 0 0 1 -1,1h-13a1,1 0 0 1 -1,-1v-13a1,1 0 0 1 1,-1z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:pathData="M7,8h8M7,11.5h8M7,15h5.5" />
+</vector>

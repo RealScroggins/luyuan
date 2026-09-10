@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 今日卡·统计行图标圆底：琥珀（今天待办，视觉稿 .stat .ic 用 --amber-bg） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FDF1E3" />
+    <corners android:radius="10dp" />
+</shape>
