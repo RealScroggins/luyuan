@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -375,7 +376,7 @@ fun NoteListScreen(
                                 selecting = false
                             }
                         ) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = "整理合并")
+                            Icon(Icons.Filled.AutoAwesome, contentDescription = "整理合并")
                         }
                         IconButton(
                             enabled = selected.isNotEmpty(),

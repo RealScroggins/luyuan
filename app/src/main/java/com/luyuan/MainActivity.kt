@@ -4,6 +4,8 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -61,7 +63,6 @@ import com.luyuan.ui.NoteListScreen
 import androidx.compose.ui.graphics.graphicsLayer
 import com.luyuan.ui.rememberPressScale
 import com.luyuan.ui.PeopleScreen
-import com.luyuan.ui.QuickInputSheet
 import com.luyuan.ui.RecordScreen
 import com.luyuan.ui.SettingsScreen
 import com.luyuan.ui.AskKeyScreen
