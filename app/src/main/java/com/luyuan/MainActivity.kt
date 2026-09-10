@@ -9,6 +9,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,7 +45,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -137,6 +142,8 @@ fun AppRoot(startDest: String) {
     val draftPrefs = remember { ctx.getSharedPreferences("luyuan_prefs", android.content.Context.MODE_PRIVATE) }
     var inputText by remember { mutableStateOf(draftPrefs.getString("terminal_draft", "") ?: "") }
     var showSettings by remember { mutableStateOf(false) }
+    // 胶囊在根 Box 坐标系里的矩形（用于「点空白收起」判定落点，避免抢胶囊的点击/焦点）
+    var capsuleRect by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
 
     // Q12（路河拍板「入口两个、存储一处」）：终端把内容存进今天日记后，给一条可点回执
     // 「📔 已存入今天的日记 · 去看看」→ 点一下跳日记页，4 秒后自动消失
@@ -240,10 +247,12 @@ fun AppRoot(startDest: String) {
                 startDestination = "home"
             ) {
                 composable("home") {
-                    // beyondBounds=4：五页全部常驻，翻页不丢输入框草稿/搜索词/列表位置
+                    // 09-10 治卡顿：beyondBoundsPageCount 4 -> 1。
+                    // 原值 4 = 五页全部常驻渲染，五个完整列表同时占主线程 → 翻页卡顿 + 手势迟钝
+                    // （路河反馈「点切页太卡」「滑动很用力才能切页」）。故只保留相邻页。
                     HorizontalPager(
                         state = pagerState,
-                        beyondBoundsPageCount = 4,
+                        beyondBoundsPageCount = 1,
                         modifier = Modifier.fillMaxSize()
                     ) { page ->
                         when (page) {
@@ -308,20 +317,25 @@ fun AppRoot(startDest: String) {
                 }
             }
             // 点击空白处收起展开态 + 收键盘（路河 09-10 反馈：别只靠输入法收起）
-            // 说明：本层先于 TerminalCapsule 声明（即位于其下层），且胶囊已置 zIndex=2f，
-            // 故点在胶囊内时由胶囊自己消费事件，不会被本层抢走焦点。
+            // 09-10 二改：原用无差别 fillMaxSize().clickable()，会与胶囊抢点击 →
+            // 路河真机「点胶囊打字不显示」很可能是焦点被本层抢走。
+            // 改为 pointerInput 判定落点：落在胶囊矩形内一律放行（不消费），只有点在外围才收起。
             val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
             if (expanded) {
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) {
-                            expanded = false
-                            searchMode = false
-                            focusManager.clearFocus()
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val p = down.position
+                                val inside = capsuleRect != null && capsuleRect!!.contains(p)
+                                if (!inside) {
+                                    expanded = false
+                                    searchMode = false
+                                    focusManager.clearFocus()
+                                }
+                            }
                         }
                 )
             }
@@ -366,6 +380,19 @@ fun AppRoot(startDest: String) {
                         draftPrefs.edit().putString("terminal_draft", it).apply()
                     },
                     onCommitDiary = {
+                        // 路河 09-10 口径更正：胶囊是「存笔记」的地方，回车 = 存一条笔记，且不跳页。
+                        // 存日记改由展开态的「日记」按钮负责（见 onSaveDiary）。
+                        val t = inputText.trim()
+                        if (t.isNotBlank()) {
+                            vm.addManual(t)
+                            inputText = ""
+                            draftPrefs.edit().remove("terminal_draft").apply()
+                            expanded = false
+                            focusManager.clearFocus()
+                        }
+                    },
+                    onSaveDiary = {
+                        // 「日记」按钮：存成日记并跳日记页（路河拍板）
                         val t = inputText.trim()
                         if (t.isNotBlank()) {
                             vm.saveDiary(t)
@@ -373,7 +400,7 @@ fun AppRoot(startDest: String) {
                             draftPrefs.edit().remove("terminal_draft").apply()
                             expanded = false
                             focusManager.clearFocus()
-                            scope.launch { pagerState.animateScrollToPage(3) } // 存日记并跳日记页
+                            scope.launch { pagerState.animateScrollToPage(3) } // 3 = 日记页
                         }
                     },
                     onPickImage = {
@@ -391,25 +418,63 @@ fun AppRoot(startDest: String) {
                         .align(Alignment.BottomCenter)
                         .zIndex(3f)
                         .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .onGloballyPositioned { coords ->
+                            val b = coords.boundsInParent()
+                            // 略微外扩 8dp：手指点在胶囊边界附近也算「内」，避免误收起
+                            capsuleRect = androidx.compose.ui.geometry.Rect(
+                                left = b.left - 8f, top = b.top - 8f,
+                                right = b.right + 8f, bottom = b.bottom + 8f
+                            )
+                        }
                 )
             }
             // 笔记页【左缘】右滑 → 设置抽屉（路河 09-10 拍板：从左边呼出，别跟右边记账页手势冲突）
-            // 09-10 补修：原判定区仅 24dp、阈值 70dp，真机手指难以精准落在边缘 → 放宽到 32dp/48dp。
+            // 09-10 二改：detectHorizontalDragGestures 会被外层 HorizontalPager 抢走（同为横向拖拽，
+            // Pager 层级更深且是滚动容器，必输）→ 改为自行解析指针事件：
+            // 只认「首段位移明确横向向右」的滑动，一旦判定纵向就立刻放行给列表，不再 consume。
             if (currentRoute == "home" && pagerState.currentPage == 0 && !showSettings) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
                         .fillMaxHeight()
-                        .width(32.dp)
-                        .zIndex(2f)
+                        .width(36.dp)
+                        .zIndex(5f)
                         .pointerInput(Unit) {
-                            var total = 0f
-                            detectHorizontalDragGestures(
-                                onDragStart = { total = 0f },
-                                onDragEnd = { if (total > 48f) showSettings = true }
-                            ) { change, amount ->
-                                total += amount
-                                change.consume()
+                            awaitEachGesture {
+                                val down = awaitFirstDown(
+                                    requireUnconsumed = false,
+                                    pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial
+                                )
+                                var totalDx = 0f
+                                var totalDy = 0f
+                                var decided = false   // 方向是否已判定
+                                var isRight = false   // 是否判定为「右滑呼出设置」
+                                while (true) {
+                                    // Initial pass：抢在子级（HorizontalPager）之前拿到事件，否则必输
+                                    val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                                    val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (!ch.pressed) {
+                                        // 抬手：达到阈值才呼出
+                                        if (isRight && totalDx > 40f) showSettings = true
+                                        break
+                                    }
+                                    totalDx += ch.positionChange().x
+                                    totalDy += ch.positionChange().y
+                                    if (!decided) {
+                                        val adx = kotlin.math.abs(totalDx)
+                                        val ady = kotlin.math.abs(totalDy)
+                                        if (adx > 12f || ady > 12f) {
+                                            decided = true
+                                            // 横向且向右 → 接管；否则彻底放行（不 consume，交还给 Pager/列表）
+                                            isRight = adx > ady && totalDx > 0f
+                                        }
+                                    }
+                                    if (decided && isRight) {
+                                        ch.consume()
+                                    } else if (decided) {
+                                        break
+                                    }
+                                }
                             }
                         }
                 )

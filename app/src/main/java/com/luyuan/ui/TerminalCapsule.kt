@@ -36,7 +36,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -64,15 +63,21 @@ fun TerminalCapsule(
     inputText: String,
     onInputTextChange: (String) -> Unit,
     onCommitDiary: () -> Unit,
+    onSaveDiary: () -> Unit,
     onPickImage: () -> Unit,
     onRecord: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val focusReq = remember { FocusRequester() }
+    // 焦点请求重试：expanded 变 true 时输入框可能尚未完成 compose，单次 requestFocus 会静默失败
+    // （路河真机「打字不显示」的疑因之一）。改为多轮重试，成功即止。
     LaunchedEffect(expanded) {
         if (expanded) {
-            kotlinx.coroutines.delay(150) // 等展开动画稳定
-            focusReq.requestFocus()
+            repeat(6) { attempt ->
+                kotlinx.coroutines.delay(if (attempt == 0) 120L else 80L)
+                val ok = runCatching { focusReq.requestFocus() }.isSuccess
+                if (ok) return@LaunchedEffect
+            }
         }
     }
     Column(
@@ -81,7 +86,9 @@ fun TerminalCapsule(
             .fillMaxWidth()
             .shadow(18.dp, RoundedCornerShape(22.dp), clip = false)
             .background(
-                Brush.horizontalGradient(listOf(Color(0xF7FAF7F0), Color(0xEDFAF7F0))),
+                // 改不透明：原 0xF7/0xED 半透明叠在浅色页面上，会拉低输入文字的对比度
+                // （路河真机「打字看不见」）→ 统一为不透明纸白。
+                Color(0xFFFAF7F0),
                 RoundedCornerShape(22.dp)
             )
             .border(1.dp, Color(0x1A224A3A), RoundedCornerShape(22.dp))
@@ -131,7 +138,7 @@ fun TerminalCapsule(
                     decorationBox = { inner ->
                         Box(contentAlignment = Alignment.TopStart) {
                             if (inputText.isEmpty()) {
-                                Text("写点什么，回车存日记，或点下面按钮…", fontSize = 14.sp, color = LuyuanColors.Ink3)
+                                Text("记一笔，回车存笔记；点「日记」存进今天…", fontSize = 14.sp, color = LuyuanColors.Ink3)
                             }
                             inner
                         }
@@ -146,7 +153,7 @@ fun TerminalCapsule(
                     // 搜索态：退出搜索
                     ExpandedAction("退出搜索", Icons.Default.Close, onToggleSearch)
                 } else {
-                    ExpandedAction("日记", Icons.Default.EditNote, onCommitDiary)
+                    ExpandedAction("日记", Icons.Default.EditNote, onSaveDiary)
                     Spacer(Modifier.width(6.dp))
                     ExpandedAction("搜索", Icons.Default.Search, onToggleSearch)
                     Spacer(Modifier.width(6.dp))
@@ -168,7 +175,7 @@ fun TerminalCapsule(
             // ---------- 收起态：占位文案 + 唯一语音圆钮 ----------
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    "记一笔 / 说一句 / 问路远…",
+                    "记一笔笔记 / 说一句 / 问路远…",
                     fontSize = 13.sp,
                     color = LuyuanColors.Ink3,
                     modifier = Modifier
