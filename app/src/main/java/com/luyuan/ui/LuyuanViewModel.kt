@@ -118,6 +118,14 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     private val _savedMsg = MutableStateFlow("")
     val savedMsg: StateFlow<String> = _savedMsg
 
+    /**
+     * Q12（路河拍板）：超级终端每次把内容存进「今天的日记」就 +1。
+     * 用代际计数而非 Boolean——StateFlow 连续同值会撞帧被吞掉。
+     * 主页据此弹可点回执「📔 已存入今天的日记 · 去看看」，点一下跳日记页。
+     */
+    private val _diaryEcho = MutableStateFlow(0)
+    val diaryEcho: StateFlow<Int> = _diaryEcho
+
     private var speech: SpeechRecognizer? = null
     private var currentDiary = false
 
@@ -300,6 +308,7 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         if (t.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
             NoteRepository.saveDiary(ctx, t)
+            _diaryEcho.value = _diaryEcho.value + 1
             refresh()
         }
     }

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 今日卡·加桌瞬间的极简兜底（vivo/OriginOS 兼容专用）
+     现象：部分 ROM 加桌后系统先画占位圆圈，首帧没到就一直停在圆圈。
+     这里只放 LinearLayout + 两个 TextView（RemoteViews 全兼容、无自定义 View），
+     保证任何 ROM 上「加桌立刻有字」，随后 Provider 用完整 widget_today 覆盖。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_initial_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_today_bg"
+    android:padding="12dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="路远"
+        android:textColor="#224A3A"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_initial_hint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:paddingTop="4dp"
+        android:text="正在加载今日…"
+        android:textColor="#8A9690"
+        android:textSize="11sp" />
+
+</LinearLayout>

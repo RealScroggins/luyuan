@@ -27,19 +27,38 @@ import java.util.Locale
 class TodayWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
-        for (id in ids) renderSafe(context, manager, id)
+        logWidget(context, "onUpdate ids=${ids.size} (首次加桌/系统周期刷新都会走这里)")
+        for (id in ids) {
+            // 先推极简卡：vivo/OriginOS 加桌瞬间只画系统占位圈，首帧不到就一直停在圈上
+            pushInitial(context, manager, id)
+            renderSafe(context, manager, id)
+        }
+    }
+
+    /** 推一版「只有两行字」的兜底卡，保证任何 ROM 上都不剩空白/圆圈 */
+    private fun pushInitial(context: Context, manager: AppWidgetManager, appWidgetId: Int) {
+        try {
+            manager.updateAppWidget(
+                appWidgetId,
+                RemoteViews(context.packageName, R.layout.widget_today_initial)
+            )
+        } catch (e: Throwable) {
+            logWidget(context, "pushInitial 失败: $e")
+        }
     }
 
     /** 拖动调整组件大小（4×2 ↔ 4×3）时重算「最近 3 条」显隐 */
     override fun onAppWidgetOptionsChanged(
         context: Context, manager: AppWidgetManager, appWidgetId: Int, newOptions: android.os.Bundle
     ) {
+        logWidget(context, "onAppWidgetOptionsChanged id=$appWidgetId")
         renderSafe(context, manager, appWidgetId)
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         if (intent.action == ACTION_REFRESH) {
+            logWidget(context, "onReceive ACTION_REFRESH")
             val mgr = AppWidgetManager.getInstance(context)
             val ids = mgr.getAppWidgetIds(ComponentName(context, TodayWidgetProvider::class.java))
             for (id in ids) renderSafe(context, mgr, id)
@@ -57,18 +76,34 @@ class TodayWidgetProvider : AppWidgetProvider() {
         } catch (e: Throwable) {
             logWidgetError(context, e)
             try {
-                val fallback = RemoteViews(context.packageName, R.layout.widget_error)
-                fallback.setOnClickPendingIntent(
-                    R.id.widget_error_root,
-                    PendingIntent.getActivity(
-                        context, 4301,
-                        Intent(context, MainActivity::class.java),
-                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                    )
+                manager.updateAppWidget(
+                    appWidgetId,
+                    RemoteViews(context.packageName, R.layout.widget_today_initial)
                 )
-                manager.updateAppWidget(appWidgetId, fallback)
             } catch (_: Throwable) {
+                try {
+                    manager.updateAppWidget(
+                        appWidgetId,
+                        RemoteViews(context.packageName, R.layout.widget_error)
+                    )
+                } catch (_: Throwable) {
+                }
             }
+        }
+    }
+
+    /**
+     * 心跳/诊断日志（写共享目录 widget_log.txt，随 Syncthing 回传电脑）。
+     * 用途：判断「加桌只显圆圈」到底是 onUpdate 没被调用，还是渲染崩了——之前完全没有证据。
+     */
+    private fun logWidget(context: Context, msg: String) {
+        try {
+            val f = java.io.File(StorageLocator.getRoot(context), "widget_log.txt")
+            val ts = java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.CHINA)
+                .format(java.util.Date())
+            val prev = if (f.exists() && f.length() < 100_000) f.readText() else ""
+            f.writeText((prev + "==== " + ts + " " + msg + "\n").takeLast(100_000))
+        } catch (_: Throwable) {
         }
     }
 
@@ -170,6 +205,11 @@ class TodayWidgetProvider : AppWidgetProvider() {
         views.setOnClickPendingIntent(R.id.widget_note, quickNotePi(context))
         views.setOnClickPendingIntent(R.id.widget_record, recordPi(context))
 
+        logWidget(
+            context,
+            "render ok id=$appWidgetId 课=${courses.size} 笔记=${notes.size} 联系人=${contacts.size} " +
+                "支出=${expenses.size} showRecent=$showRecent"
+        )
         manager.updateAppWidget(appWidgetId, views)
     }
 

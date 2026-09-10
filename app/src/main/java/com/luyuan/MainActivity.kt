@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -44,7 +45,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -58,6 +62,7 @@ import com.luyuan.ui.DetailEditScreen
 import com.luyuan.ui.JournalScreen
 import com.luyuan.ui.LedgerScreen
 import com.luyuan.ui.LuyuanTheme
+import com.luyuan.ui.LuyuanColors
 import com.luyuan.ui.LuyuanViewModel
 import com.luyuan.ui.NoteListScreen
 import androidx.compose.ui.graphics.graphicsLayer
@@ -131,6 +136,18 @@ fun AppRoot(startDest: String) {
     val draftPrefs = remember { ctx.getSharedPreferences("luyuan_prefs", android.content.Context.MODE_PRIVATE) }
     var inputText by remember { mutableStateOf(draftPrefs.getString("terminal_draft", "") ?: "") }
     var showSettings by remember { mutableStateOf(false) }
+
+    // Q12（路河拍板「入口两个、存储一处」）：终端把内容存进今天日记后，给一条可点回执
+    // 「📔 已存入今天的日记 · 去看看」→ 点一下跳日记页，4 秒后自动消失
+    val diaryEcho by vm.diaryEcho.collectAsStateWithLifecycle()
+    var showDiaryEcho by remember { mutableStateOf(false) }
+    LaunchedEffect(diaryEcho) {
+        if (diaryEcho > 0) {
+            showDiaryEcho = true
+            kotlinx.coroutines.delay(4000)
+            showDiaryEcho = false
+        }
+    }
 
     // 图片按钮（Q13 融图片不融表情）：选图 → 压缩落 images/ → 带配图存一条笔记
     val pickImage = rememberLauncherForActivityResult(
@@ -304,6 +321,29 @@ fun AppRoot(startDest: String) {
                             focusManager.clearFocus()
                         }
                 )
+            }
+            // Q12：存进今天日记后的可点回执（胶囊上方，不挡输入）
+            if (showDiaryEcho && currentRoute == "home" && !multiSelect) {
+                Box(
+                    contentAlignment = Alignment.CenterStart,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 20.dp)
+                        .padding(bottom = 82.dp)
+                        .background(LuyuanColors.Green700, RoundedCornerShape(999.dp))
+                        .clickable {
+                            showDiaryEcho = false
+                            scope.launch { pagerState.animateScrollToPage(3) } // 3 = 日记页
+                        }
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        "📔 已存入今天的日记 · 去看看",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
             // 悬浮终端胶囊 v3（Q13 拍板：收起态仅语音钮，点开向下展开；多选时收起）
             if (currentRoute == "home" && !multiSelect) {

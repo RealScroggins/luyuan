@@ -526,8 +526,17 @@ fun NoteListScreen(
                 ) {
                     for (g in groups) {
                         item(key = "h_${g.label}_${g.notes.size}") {
+                            // 多选态：点日期分组头 = 选/不选这一整天（稿 multiselect.html「按日期全选」）
+                            val dayIds = g.notes.map { it.id }
+                            val dayAllIn = selecting && dayIds.isNotEmpty() && dayIds.all { it in selected }
                             Row(
-                                modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
+                                modifier = Modifier
+                                    .padding(top = 10.dp, bottom = 2.dp)
+                                    .then(
+                                        if (selecting) Modifier.clickable {
+                                            selected = if (dayAllIn) selected - dayIds else selected + dayIds
+                                        } else Modifier
+                                    ),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
@@ -542,6 +551,15 @@ fun NoteListScreen(
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                if (selecting) {
+                                    Spacer(Modifier.size(8.dp))
+                                    Text(
+                                        if (dayAllIn) "✓ 取消这天" else "选这一整天",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = LuyuanColors.Green700
+                                    )
+                                }
                             }
                         }
                         items(g.notes, key = { it.id }) { note ->

@@ -154,6 +154,13 @@ fun JournalScreen(vm: LuyuanViewModel, onRecord: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    // Q12：把「随手扔」和「坐下来写」两个入口讲清楚——存储只有今天这一篇
+                    Text(
+                        "随手记也可以走底部胶囊，会自动归到这里",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                    )
                     OutlinedTextField(
                         value = diaryValue,
                         onValueChange = { diaryValue = it; dirty = true },
