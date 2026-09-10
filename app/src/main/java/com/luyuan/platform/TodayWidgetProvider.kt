@@ -6,7 +6,6 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.view.View
 import android.widget.RemoteViews
 import com.luyuan.MainActivity
 import com.luyuan.R
@@ -123,7 +122,9 @@ class TodayWidgetProvider : AppWidgetProvider() {
     }
 
     private fun render(context: Context, manager: AppWidgetManager, appWidgetId: Int) {
-        val views = RemoteViews(context.packageName, R.layout.widget_today)
+        // ⚠️ 2026-09-10：改用扁平布局（原 widget_today 12 层嵌套在 vivo 上不渲染，
+        //    扁平版向「已证实能显示的速记条」看齐：单层容器 + 基础 TextView）
+        val views = RemoteViews(context.packageName, R.layout.widget_today_flat)
 
         // 数据逐项防御：任一仓库异常只丢该项数据，不拖垮整卡渲染
         val courses = try { V2EntityRepository.listCourses(context) } catch (_: Throwable) { emptyList() }
@@ -140,14 +141,14 @@ class TodayWidgetProvider : AppWidgetProvider() {
             } catch (_: Exception) { "" }
         )
 
-        // 下一节课
+        // 下一节课（扁平布局：课名一行、地点+倒计时一行）
         val next = nextCourse(courses)
         if (next != null) {
-            views.setTextViewText(R.id.widget_course_hint, "下一节 · ${next.start}")
             views.setTextViewText(R.id.widget_course_name, next.name.ifBlank { "课程" })
             views.setTextViewText(
                 R.id.widget_course_place,
                 listOfNotNull(
+                    "${next.start} 上课".takeIf { next.start.isNotBlank() },
                     next.place.takeIf { it.isNotBlank() },
                     next.teacher.takeIf { it.isNotBlank() }
                 ).joinToString(" · ")
@@ -155,60 +156,36 @@ class TodayWidgetProvider : AppWidgetProvider() {
             val mins = minutesUntil(next)
             views.setTextViewText(
                 R.id.widget_course_countdown,
-                if (next.weekday == todayLuyuan() && mins >= 0) "${mins}′ 后上课" else weekdayName(next.weekday)
+                if (next.weekday == todayLuyuan() && mins >= 0) "${mins}′ 后" else weekdayName(next.weekday)
             )
         } else {
-            views.setTextViewText(R.id.widget_course_hint, "课程")
-            views.setTextViewText(R.id.widget_course_name, "暂无课表")
-            views.setTextViewText(R.id.widget_course_place, "去课程页添加")
+            views.setTextViewText(R.id.widget_course_name, "今天没课 · 好日子")
+            views.setTextViewText(R.id.widget_course_place, "去课程页添加课表")
             views.setTextViewText(R.id.widget_course_countdown, "")
         }
 
-        // 今天待办 / 本月支出
+        // 今天待办 / 本月支出（扁平布局：合成一行）
         val undone = contacts.sumOf { c -> c.undoneTodos.size }
         val overdue = contacts.sumOf { c -> c.todos.count { t -> !t.done && isOverdue(t.remind_at) } }
-        views.setTextViewText(
-            R.id.widget_todo_val,
-            if (overdue > 0) "$undone 件 · $overdue 过期" else "$undone 件"
-        )
         val monthSum = expenses.filter { isThisMonth(it.spent_at.ifBlank { it.created_at }) }
             .sumOf { it.amount }
-        views.setTextViewText(R.id.widget_expense_val, "¥${String.format(Locale.US, "%.1f", monthSum)}")
+        views.setTextViewText(
+            R.id.widget_todo_val,
+            "待办 " + (if (overdue > 0) "$undone 件 · $overdue 过期" else "$undone 件") +
+                "    本月 ¥" + String.format(Locale.US, "%.1f", monthSum)
+        )
 
-        // 最近 3 条（仅 4×3 显示）
-        val recent = notes.sortedByDescending { it.updated_at.ifBlank { it.created_at } }.take(3)
-        val h = manager.getAppWidgetOptions(appWidgetId)
-            .getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0)
-        val showRecent = h >= RECENT_HEIGHT_THRESHOLD
-        views.setViewVisibility(R.id.widget_recent, if (showRecent) View.VISIBLE else View.GONE)
-        if (showRecent) {
-            for (i in 0..2) {
-                val rowId = recentRowId(i)
-                val txId = recentTextId(i)
-                val tmId = recentTimeId(i)
-                if (i < recent.size) {
-                    val n = recent[i]
-                    views.setViewVisibility(rowId, View.VISIBLE)
-                    views.setTextViewText(txId, n.text.take(40))
-                    views.setTextViewText(tmId, md(n.updated_at.ifBlank { n.created_at }))
-                    views.setOnClickPendingIntent(rowId, detailPi(context, n.id))
-                } else {
-                    views.setViewVisibility(rowId, View.GONE)
-                }
-            }
-        }
-
-        // 点击
-        views.setOnClickPendingIntent(R.id.widget_course, pagePi(context, "course", 4101))
-        views.setOnClickPendingIntent(R.id.widget_todo, pagePi(context, "notes", 4102))
-        views.setOnClickPendingIntent(R.id.widget_expense, pagePi(context, "ledger", 4103))
+        // 点击（扁平布局：课名/地点→课程页，待办行→笔记页，双键→速记/录音）
+        views.setOnClickPendingIntent(R.id.widget_course_name, pagePi(context, "course", 4101))
+        views.setOnClickPendingIntent(R.id.widget_course_place, pagePi(context, "course", 4101))
+        views.setOnClickPendingIntent(R.id.widget_todo_val, pagePi(context, "notes", 4102))
         views.setOnClickPendingIntent(R.id.widget_note, quickNotePi(context))
         views.setOnClickPendingIntent(R.id.widget_record, recordPi(context))
 
         logWidget(
             context,
-            "render ok id=$appWidgetId 课=${courses.size} 笔记=${notes.size} 联系人=${contacts.size} " +
-                "支出=${expenses.size} showRecent=$showRecent"
+            "render ok(flat) id=$appWidgetId 课=${courses.size} 笔记=${notes.size} 联系人=${contacts.size} " +
+                "支出=${expenses.size}"
         )
         manager.updateAppWidget(appWidgetId, views)
     }
@@ -269,23 +246,12 @@ class TodayWidgetProvider : AppWidgetProvider() {
         return s.startsWith(String.format(Locale.US, "%04d-%02d", y, m))
     }
 
-    private fun md(s: String): String = if (s.length >= 10) s.substring(5, 10) else s
-
     // ---------- PendingIntent ----------
 
     private fun pagePi(context: Context, page: String, req: Int): PendingIntent {
         val i = Intent(context, MainActivity::class.java).putExtra("page", page)
         return PendingIntent.getActivity(
             context, req, i,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-    }
-
-    private fun detailPi(context: Context, id: String): PendingIntent {
-        val i = Intent(context, MainActivity::class.java).putExtra("detailId", id)
-        return PendingIntent.getActivity(
-            context, 5000 + id.hashCode().let { if (it < 0) -it else it } % 1000,
-            i,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
     }
@@ -306,20 +272,7 @@ class TodayWidgetProvider : AppWidgetProvider() {
         )
     }
 
-    private fun recentRowId(i: Int) = when (i) {
-        0 -> R.id.widget_recent_0; 1 -> R.id.widget_recent_1; else -> R.id.widget_recent_2
-    }
-
-    private fun recentTextId(i: Int) = when (i) {
-        0 -> R.id.widget_recent_tx_0; 1 -> R.id.widget_recent_tx_1; else -> R.id.widget_recent_tx_2
-    }
-
-    private fun recentTimeId(i: Int) = when (i) {
-        0 -> R.id.widget_recent_tm_0; 1 -> R.id.widget_recent_tm_1; else -> R.id.widget_recent_tm_2
-    }
-
     companion object {
         const val ACTION_REFRESH = "com.luyuan.WIDGET_REFRESH"
-        private const val RECENT_HEIGHT_THRESHOLD = 160
     }
 }

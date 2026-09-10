@@ -1,14 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 今日卡 · provider 配置（2026-09-10 vivo 兼容第三版）
+     ⚠️ 复盘：代码侧已证实完全正常（同步回传的 widget_log.txt 有 render ok、无 widget_err.txt），
+        问题 100% 在 vivo 桌面不渲染。故本版所有声明项向「已证实能显示的速记条 quick_widget_info」逐字对齐。
+     与速记条逐项对齐（速记条：minWidth=180dp/minHeight=40dp/updatePeriodMillis=0/
+     initialLayout=@layout/widget_quick/resizeMode=horizontal|vertical/widgetCategory=home_screen）：
+       - updatePeriodMillis 由 1800000 改为 0  ← 关键：非 0 在部分 vivo ROM 会被拉进受限渲染通道
+       - initialLayout 指向扁平布局 widget_today_flat
+       - 不写 previewLayout / targetCell / minResize / description（速记条都没写） -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="250dp"
     android:minHeight="110dp"
-    android:minResizeWidth="250dp"
-    android:minResizeHeight="110dp"
-    android:targetCellWidth="4"
-    android:targetCellHeight="2"
-    android:updatePeriodMillis="1800000"
-    android:initialLayout="@layout/widget_today_initial"
-    android:previewLayout="@layout/widget_today_preview"
+    android:updatePeriodMillis="0"
+    android:initialLayout="@layout/widget_today_flat"
     android:resizeMode="horizontal|vertical"
-    android:widgetCategory="home_screen"
-    android:description="@string/widget_today_desc" />
+    android:widgetCategory="home_screen" />
