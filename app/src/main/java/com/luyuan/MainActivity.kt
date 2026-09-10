@@ -44,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -307,6 +308,8 @@ fun AppRoot(startDest: String) {
                 }
             }
             // 点击空白处收起展开态 + 收键盘（路河 09-10 反馈：别只靠输入法收起）
+            // 说明：本层先于 TerminalCapsule 声明（即位于其下层），且胶囊已置 zIndex=2f，
+            // 故点在胶囊内时由胶囊自己消费事件，不会被本层抢走焦点。
             val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
             if (expanded) {
                 Box(
@@ -386,21 +389,24 @@ fun AppRoot(startDest: String) {
                     },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        .zIndex(3f)
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                 )
             }
             // 笔记页【左缘】右滑 → 设置抽屉（路河 09-10 拍板：从左边呼出，别跟右边记账页手势冲突）
-            if (currentRoute == "home" && pagerState.currentPage == 0 && !showSettings && !expanded) {
+            // 09-10 补修：原判定区仅 24dp、阈值 70dp，真机手指难以精准落在边缘 → 放宽到 32dp/48dp。
+            if (currentRoute == "home" && pagerState.currentPage == 0 && !showSettings) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
                         .fillMaxHeight()
-                        .width(24.dp)
+                        .width(32.dp)
+                        .zIndex(2f)
                         .pointerInput(Unit) {
                             var total = 0f
                             detectHorizontalDragGestures(
                                 onDragStart = { total = 0f },
-                                onDragEnd = { if (total > 70f) showSettings = true }
+                                onDragEnd = { if (total > 48f) showSettings = true }
                             ) { change, amount ->
                                 total += amount
                                 change.consume()
