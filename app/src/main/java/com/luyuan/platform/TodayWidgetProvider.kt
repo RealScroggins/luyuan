@@ -6,7 +6,9 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import android.widget.RemoteViews
+import android.view.View
 import com.luyuan.MainActivity
 import com.luyuan.R
 import com.luyuan.data.ContactRepository
@@ -48,7 +50,7 @@ class TodayWidgetProvider : AppWidgetProvider() {
 
     /** 拖动调整组件大小（4×2 ↔ 4×3）时重算「最近 3 条」显隐 */
     override fun onAppWidgetOptionsChanged(
-        context: Context, manager: AppWidgetManager, appWidgetId: Int, newOptions: android.os.Bundle
+        context: Context, manager: AppWidgetManager, appWidgetId: Int, newOptions: Bundle
     ) {
         logWidget(context, "onAppWidgetOptionsChanged id=$appWidgetId")
         renderSafe(context, manager, appWidgetId)
@@ -123,7 +125,8 @@ class TodayWidgetProvider : AppWidgetProvider() {
 
     private fun render(context: Context, manager: AppWidgetManager, appWidgetId: Int) {
         // ⚠️ 2026-09-10：改用扁平布局（原 widget_today 12 层嵌套在 vivo 上不渲染，
-        //    扁平版向「已证实能显示的速记条」看齐：单层容器 + 基础 TextView）
+        //    扁平版向「已证实能显示的速记条」看齐：单层容器 + 基础 TextView）。
+        //    2026-09-10 补：扁平前提下把内容全部加回（课程块两态 / 待办 / 支出 / 最近 3 条 / 双键）
         val views = RemoteViews(context.packageName, R.layout.widget_today_flat)
 
         // 数据逐项防御：任一仓库异常只丢该项数据，不拖垮整卡渲染
@@ -136,22 +139,22 @@ class TodayWidgetProvider : AppWidgetProvider() {
         views.setTextViewText(
             R.id.widget_date,
             try {
-                val f = java.text.SimpleDateFormat("M月d日 E", Locale.CHINA)
-                f.format(java.util.Date())
+                java.text.SimpleDateFormat("M月d日 E", Locale.CHINA).format(java.util.Date())
             } catch (_: Exception) { "" }
         )
 
-        // 下一节课（扁平布局：课名一行、地点+倒计时一行）
+        // ---- 2 课程块（两态：有课=下一节；无课=今天没课） ----
         val next = nextCourse(courses)
         if (next != null) {
+            views.setTextViewText(R.id.widget_course_hint, "下一节")
             views.setTextViewText(R.id.widget_course_name, next.name.ifBlank { "课程" })
             views.setTextViewText(
                 R.id.widget_course_place,
                 listOfNotNull(
-                    "${next.start} 上课".takeIf { next.start.isNotBlank() },
+                    next.start.takeIf { next.start.isNotBlank() }?.let { "$it 上课" },
                     next.place.takeIf { it.isNotBlank() },
                     next.teacher.takeIf { it.isNotBlank() }
-                ).joinToString(" · ")
+                ).joinToString(" · ").ifBlank { " " }
             )
             val mins = minutesUntil(next)
             views.setTextViewText(
@@ -159,35 +162,115 @@ class TodayWidgetProvider : AppWidgetProvider() {
                 if (next.weekday == todayLuyuan() && mins >= 0) "${mins}′ 后" else weekdayName(next.weekday)
             )
         } else {
+            views.setTextViewText(R.id.widget_course_hint, "课程")
             views.setTextViewText(R.id.widget_course_name, "今天没课 · 好日子")
-            views.setTextViewText(R.id.widget_course_place, "去课程页添加课表")
+            views.setTextViewText(
+                R.id.widget_course_place,
+                if (courses.isEmpty()) "去课程页添加课表" else "好好休息"
+            )
             views.setTextViewText(R.id.widget_course_countdown, "")
         }
 
-        // 今天待办 / 本月支出（扁平布局：合成一行）
+        // ---- 3 统计行：待办 / 本月支出 ----
         val undone = contacts.sumOf { c -> c.undoneTodos.size }
         val overdue = contacts.sumOf { c -> c.todos.count { t -> !t.done && isOverdue(t.remind_at) } }
-        val monthSum = expenses.filter { isThisMonth(it.spent_at.ifBlank { it.created_at }) }
-            .sumOf { it.amount }
         views.setTextViewText(
             R.id.widget_todo_val,
-            "待办 " + (if (overdue > 0) "$undone 件 · $overdue 过期" else "$undone 件") +
-                "    本月 ¥" + String.format(Locale.US, "%.1f", monthSum)
+            if (overdue > 0) "$undone 件 · $overdue 过期" else "$undone 件"
+        )
+        val monthSum = expenses
+            .filter { isThisMonth(it.spent_at.ifBlank { it.created_at }) }
+            .sumOf { it.amount }
+        views.setTextViewText(
+            R.id.widget_expense_val,
+            "本月 ¥" + String.format(Locale.US, "%.1f", monthSum)
         )
 
-        // 点击（扁平布局：课名/地点→课程页，待办行→笔记页，双键→速记/录音）
+        // ---- 4 最近 3 条（按卡片高度显隐整段） ----
+        val showRecent = isTallEnough(context, manager, appWidgetId)
+        views.setViewVisibility(
+            R.id.widget_recent,
+            if (showRecent) View.VISIBLE else View.GONE
+        )
+        if (showRecent) {
+            // 最近 = 已去重、按更新时间倒序的笔记
+            val recent = try {
+                notes.filter { !it.deleted }
+                    .sortedByDescending { it.updated_at ?: it.created_at ?: "" }
+                    .take(3)
+            } catch (_: Throwable) { emptyList() }
+
+            for (i in 0..2) {
+                val rowId = when (i) { 0 -> R.id.widget_recent_0; 1 -> R.id.widget_recent_1; else -> R.id.widget_recent_2 }
+                val txId = when (i) { 0 -> R.id.widget_recent_tx_0; 1 -> R.id.widget_recent_tx_1; else -> R.id.widget_recent_tx_2 }
+                val tmId = when (i) { 0 -> R.id.widget_recent_tm_0; 1 -> R.id.widget_recent_tm_1; else -> R.id.widget_recent_tm_2 }
+                val n = recent.getOrNull(i)
+                if (n == null) {
+                    views.setViewVisibility(rowId, View.GONE)
+                } else {
+                    views.setViewVisibility(rowId, View.VISIBLE)
+                    views.setTextViewText(txId, n.text.replace("\n", " ").ifBlank { "（无内容）" })
+                    views.setTextViewText(tmId, shortWhen(n.updated_at ?: n.created_at))
+                    views.setOnClickPendingIntent(rowId, pagePi(context, "notes", 4110 + i))
+                }
+            }
+            if (recent.isEmpty()) {
+                views.setTextViewText(R.id.widget_recent_tx_0, "还没有笔记，长按桌面说一句")
+                views.setTextViewText(R.id.widget_recent_tm_0, "")
+                views.setViewVisibility(R.id.widget_recent_0, View.VISIBLE)
+                views.setOnClickPendingIntent(R.id.widget_recent_0, pagePi(context, "notes", 4119))
+            }
+        }
+
+        // ---- 5 点击 ----
+        views.setOnClickPendingIntent(R.id.widget_course, pagePi(context, "course", 4101))
         views.setOnClickPendingIntent(R.id.widget_course_name, pagePi(context, "course", 4101))
         views.setOnClickPendingIntent(R.id.widget_course_place, pagePi(context, "course", 4101))
+        views.setOnClickPendingIntent(R.id.widget_stats, pagePi(context, "notes", 4102))
         views.setOnClickPendingIntent(R.id.widget_todo_val, pagePi(context, "notes", 4102))
+        views.setOnClickPendingIntent(R.id.widget_expense_val, pagePi(context, "ledger", 4103))
+        views.setOnClickPendingIntent(R.id.widget_date, pagePi(context, "journal", 4104))
         views.setOnClickPendingIntent(R.id.widget_note, quickNotePi(context))
         views.setOnClickPendingIntent(R.id.widget_record, recordPi(context))
 
         logWidget(
             context,
-            "render ok(flat) id=$appWidgetId 课=${courses.size} 笔记=${notes.size} 联系人=${contacts.size} " +
-                "支出=${expenses.size}"
+            "render ok(flat-full) id=$appWidgetId 课=${courses.size} 笔记=${notes.size} " +
+                "联系人=${contacts.size} 支出=${expenses.size} 最近段=$showRecent"
         )
         manager.updateAppWidget(appWidgetId, views)
+    }
+
+    /** 卡片高度是否够放「最近 3 条」：4×2 收起、4×3 展开 */
+    private fun isTallEnough(context: Context, manager: AppWidgetManager, appWidgetId: Int): Boolean {
+        return try {
+            val opt = manager.getAppWidgetOptions(appWidgetId)
+            val hDp = opt.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT)
+            hDp >= RECENT_HEIGHT_THRESHOLD
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /** 相对时间：今天→HH:mm，昨天→昨天，更早→M/d */
+    private fun shortWhen(raw: String?): String {
+        if (raw.isNullOrBlank()) return ""
+        return try {
+            val d = raw.take(10)
+            val today = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date())
+            when {
+                d == today -> raw.drop(11).take(5)
+                else -> {
+                    val yd = java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_YEAR, -1) }
+                    val yds = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(yd.time)
+                    if (d == yds) "昨天"
+                    else {
+                        val md = d.split("-")
+                        if (md.size == 3) "${md[1].trimStart('0')}/${md[2].trimStart('0')}" else d
+                    }
+                }
+            }
+        } catch (_: Exception) { "" }
     }
 
     // ---------- 数据计算 ----------
@@ -274,5 +357,8 @@ class TodayWidgetProvider : AppWidgetProvider() {
 
     companion object {
         const val ACTION_REFRESH = "com.luyuan.WIDGET_REFRESH"
+
+        /** 「最近 3 条」的显示门槛：minHeight ≥ 该值（dp）才展开。4×3 通常 ~180dp，4×2 ~110dp */
+        private const val RECENT_HEIGHT_THRESHOLD = 150
     }
 }

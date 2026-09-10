@@ -123,9 +123,11 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = 
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                StorageLocator.setRootName(context, c.path.substringAfterLast('/'))
+                                // 存完整绝对路径（旧实现只存最后一段名字，选到非顶层目录会丢笔记）
+                                StorageLocator.setRoot(context, c.path)
                                 currentPath = c.path
-                                vm.refresh()
+                                // 重建文件监听 + 重新读盘：换目录后必须让监听器跟着换，否则新目录变动感知不到
+                                vm.onRootChanged()
                             },
                         colors = CardDefaults.cardColors(
                             containerColor = if (selected) LuyuanColors.Green50

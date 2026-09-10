@@ -220,6 +220,27 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
         super.onCleared()
     }
 
+    /**
+     * 换共享目录后调用：重建文件监听 + 重新读盘。
+     * 旧实现对已开始的 FileObserver 不会自动跟着换目录 → 换目录后新目录的变动感知不到，
+     * 且列表可能仍显示旧目录内容。这里先停旧的、再按新目录重建，最后强制刷新。
+     */
+    fun onRootChanged() {
+        try {
+            notesWatcher?.stopWatching()
+        } catch (_: Throwable) {
+        }
+        try {
+            contactsWatcher?.stopWatching()
+        } catch (_: Throwable) {
+        }
+        notesWatcher = null
+        contactsWatcher = null
+        lastDiskRefreshAt = 0L  // 立刻允许一次磁盘刷新（换目录是用户主动操作，不该被间隔闸挡住）
+        startNotesWatcher()
+        refresh()
+    }
+
     fun refresh() {
         // ⚠️ 关键：本次刷新引起的文件写入/广播，不得再回头触发 refresh（防「刷新→写盘→监听→刷新」死循环）
         suppressSelfTriggered {
