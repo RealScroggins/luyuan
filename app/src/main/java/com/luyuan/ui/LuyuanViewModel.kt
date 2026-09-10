@@ -129,6 +129,26 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     private var speech: SpeechRecognizer? = null
     private var currentDiary = false
 
+    /**
+     * ⚠️ 防自激刷新（2026-09-10 修"只有路远卡，1.18 起"）：
+     * 之前 refresh() 结束时会发广播通知桌面「今日卡」重算，而广播经广播链路又回到 VM 的 refresh()，
+     * 同时 FileObserver 又把刷新产生的文件变动当成"外部变化"再触发一次 —— 形成
+     * 「刷新→写盘→监听→刷新」死循环，把手机 CPU 吃满、整个 App 卡死。
+     * 这里让 refresh() 自己发出的后续动作（广播/监听回调）不再回头触发 refresh。
+     */
+    private val selfRefreshGuard = java.util.concurrent.atomic.AtomicInteger(0)
+
+    private inline fun suppressSelfTriggered(block: () -> Unit) {
+        selfRefreshGuard.incrementAndGet()
+        try {
+            block()
+        } finally {
+            selfRefreshGuard.decrementAndGet()
+        }
+    }
+
+    private fun isSelfTriggered(): Boolean = selfRefreshGuard.get() > 0
+
     init {
         refresh()
         startNotesWatcher()
@@ -144,11 +164,22 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     private var notesWatcher: android.os.FileObserver? = null
     private var contactsWatcher: android.os.FileObserver? = null
 
+    /** 写盘最小间隔：Syncthing 批量同步几十个事件只刷一次，且与上次刷新至少隔 8 秒（防事件风暴） */
+    @Volatile
+    private var lastDiskRefreshAt = 0L
+    private val DISK_REFRESH_MIN_INTERVAL_MS = 8000L
+
     private fun startNotesWatcher() {
         // 防抖：Syncthing 批量同步时几十个事件 → 合并成一次刷新
         val pending = java.util.concurrent.atomic.AtomicBoolean(false)
         fun scheduleRefresh() {
+            // 自己刷新引起的文件变动不回头再刷（否则死循环）
+            if (isSelfTriggered()) return
+            // 距上次写盘刷新不足 8 秒的直接丢弃，等下一次真实变动
+            val now = System.currentTimeMillis()
+            if (now - lastDiskRefreshAt < DISK_REFRESH_MIN_INTERVAL_MS) return
             if (!pending.compareAndSet(false, true)) return
+            lastDiskRefreshAt = now
             viewModelScope.launch(Dispatchers.IO) {
                 try {
                     Thread.sleep(1500)
@@ -190,25 +221,28 @@ class LuyuanViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun refresh() {
-        // 先同步置位再起协程：下拉刷新的指示器靠它联动，避免竞态提前收起
-        _refreshing.value = true
-        viewModelScope.launch(Dispatchers.IO) {
-            _notes.value = NoteRepository.listNotes(ctx)
-            _todayDiary.value = NoteRepository.todayDiaryNote(ctx)
-            _diaries.value = NoteRepository.listDiaries(ctx)
-            _contacts.value = ContactRepository.listContacts(ctx)
-            _expenses.value = V2EntityRepository.listExpenses(ctx)
-            _courses.value = V2EntityRepository.listCourses(ctx)
-            _refreshing.value = false
-            _refreshDone.value += 1
-            // 通知桌面「今日卡」组件重算（组件无周期刷新，靠 App 打开/数据变动主动推）
-            try {
-                ctx.sendBroadcast(
-                    Intent(ctx, TodayWidgetProvider::class.java).apply {
-                        action = TodayWidgetProvider.ACTION_REFRESH
-                    }
-                )
-            } catch (_: Exception) {
+        // ⚠️ 关键：本次刷新引起的文件写入/广播，不得再回头触发 refresh（防「刷新→写盘→监听→刷新」死循环）
+        suppressSelfTriggered {
+            // 先同步置位再起协程：下拉刷新的指示器靠它联动，避免竞态提前收起
+            _refreshing.value = true
+            viewModelScope.launch(Dispatchers.IO) {
+                _notes.value = NoteRepository.listNotes(ctx)
+                _todayDiary.value = NoteRepository.todayDiaryNote(ctx)
+                _diaries.value = NoteRepository.listDiaries(ctx)
+                _contacts.value = ContactRepository.listContacts(ctx)
+                _expenses.value = V2EntityRepository.listExpenses(ctx)
+                _courses.value = V2EntityRepository.listCourses(ctx)
+                _refreshing.value = false
+                _refreshDone.value += 1
+                // 通知桌面「今日卡」组件重算（组件无周期刷新，靠 App 打开/数据变动主动推）
+                try {
+                    ctx.sendBroadcast(
+                        Intent(ctx, TodayWidgetProvider::class.java).apply {
+                            action = TodayWidgetProvider.ACTION_REFRESH
+                        }
+                    )
+                } catch (_: Exception) {
+                }
             }
         }
     }
