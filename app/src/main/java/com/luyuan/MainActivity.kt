@@ -17,8 +17,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.pager.rememberPagerState
@@ -224,7 +226,10 @@ fun AppRoot(startDest: String) {
                         selected = pagerState.currentPage == page,
                         onClick = {
                             if (pagerState.currentPage != page) {
-                                scope.launch { pagerState.animateScrollToPage(page) }
+                                // 09-11 修「点击底部标签掉帧」：animateScrollToPage 跨页滚动会
+                                // 逐页渲染中间页（笔记→人脉要滚过 3 页），每页现场组合 → 掉帧。
+                                // 改瞬移，只渲染目标页 1 页；滑动切页的动画不受影响。
+                                scope.launch { pagerState.scrollToPage(page) }
                             }
                         },
                         icon = { Icon(icon, contentDescription = label) },
@@ -417,6 +422,10 @@ fun AppRoot(startDest: String) {
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .zIndex(3f)
+                        // 09-11 修「打字看不见」：vivo/OriginOS 上 windowSoftInputMode=adjustResize
+                        // 经常不生效（窗口不缩小），键盘直接盖住底部胶囊——字打得进去但看不见。
+                        // imePadding 基于 WindowInsets.ime，不依赖窗口 resize，键盘弹出时胶囊自动上移。
+                        .imePadding()
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                         .onGloballyPositioned { coords ->
                             val b = coords.boundsInParent()
@@ -439,6 +448,11 @@ fun AppRoot(startDest: String) {
                         .fillMaxHeight()
                         .width(36.dp)
                         .zIndex(5f)
+                        // 09-11 修「左缘右滑无反应」：Android 10+ 把「从屏幕左边缘往右滑」当
+                        // 系统返回手势拦截，App 内手势写得再好也收不到事件。必须主动向系统
+                        // 申请豁免（exclusion），该区域才归 App。（系统限制：排除区最高约 200dp，
+                        // 系统会自动截取，够用）
+                        .systemGestureExclusion()
                         .pointerInput(Unit) {
                             awaitEachGesture {
                                 val down = awaitFirstDown(
