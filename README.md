@@ -1,7 +1,7 @@
 # 路远 · 安卓 App（Luyuan for Android）
 
 去中心化、离线优先的本地语音记事 App。手机端独立录音 + **本地语音识别**（Vosk，不依赖电脑），
-记事按 [`SYNC_FORMAT`](https://github.com/RealScroggins/1) 存 JSON，靠系统 **Syncthing** 与电脑端双向同步。
+记事按 [`SYNC_FORMAT`](https://github.com/luheflyfly/1) 存 JSON，靠系统 **Syncthing** 与电脑端双向同步。
 **电脑开不开都不影响手机端使用。**
 
 > 电脑端「路远」项目位于 `D:\Luyuan`，本仓库仅含手机端 App 源码与自动编译配置。
@@ -38,7 +38,7 @@
 
 推送 `main` 分支后，GitHub Actions 自动编译并产出 `app-debug.apk`：
 
-1. Fork / 直接用本仓库 `RealScroggins/1`
+1. Fork / 直接用本仓库 `luheflyfly/1`
 2. `git push` 到 `main`
 3. 仓库 **Actions** 页 → 最新运行 → **Artifacts** → 下载 `app-debug`
 4. 解压得到 `app-debug.apk`
