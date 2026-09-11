@@ -89,12 +89,16 @@ object StorageLocator {
         return out
     }
 
-    /** 递归数 .json 笔记文件（跳过 .sync-conflict 副本与 audio 等无关目录不特殊处理，数量仅作参考） */
+    /**
+     * 递归数笔记 json（跳过隐藏目录：.stversions 版本垃圾桶 / .stfolder 同步标记——
+     * 否则手机端版本历史会把计数撑到几百，误导用户选错目录）。
+     */
     fun countJsonFiles(dir: File?, depth: Int, maxDepth: Int): Int {
         if (dir == null || !dir.isDirectory || depth > maxDepth) return 0
         var n = 0
         for (f in dir.listFiles() ?: return 0) {
             if (f.isDirectory) {
+                if (f.name.startsWith(".")) continue
                 n += countJsonFiles(f, depth + 1, maxDepth)
             } else if (f.name.endsWith(".json", ignoreCase = true) &&
                 !f.name.contains(".sync-conflict")

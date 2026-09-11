@@ -127,11 +127,101 @@ object NoteRepository {
         val files = dir.listFiles() ?: return
         for (f in files) {
             if (f.isDirectory) {
+                // 跳过隐藏目录（.stversions=Syncthing 版本垃圾桶 / .stfolder=同步标记）：
+                // 否则历史版本副本会被当成笔记读进列表，旧版本复活、计数虚高
+                if (f.name.startsWith(".")) continue
                 collectNotes(f, out, depth + 1, maxDepth)
             } else if (FileNaming.isNoteFile(f.name)) {
                 readNote(f)?.let { out.add(it) }
             }
         }
+    }
+
+    // ---------- 同步诊断（设置页诊断卡用）：让用户一眼看清共享目录里到底有什么 ----------
+
+    /** 共享目录体检结果 */
+    data class Diag(
+        val root: String,
+        val dirReadable: Boolean,   // 目录能否 listFiles（ false=权限没给够/目录不存在）
+        val jsonTotal: Int,         // 全部 json 文件（含隐藏目录，与旧计数口径一致）
+        val notes: Int,             // 活跃笔记（主列表应显示的数量）
+        val diaries: Int,           // 日记（主列表不显示，日记页显示）
+        val trashed: Int,           // 软删进回收站的
+        val entities: Int,          // kind 实体（联系人/课程/账目等，不算笔记）
+        val failed: List<String>    // 解析失败的文件名（最多列 8 个，空=全部健康）
+    )
+
+    /** 扫一遍共享根目录并分类计数。与 collectNotes 同口径但跳过隐藏目录计 notes，jsonTotal 含隐藏目录供对照 */
+    fun diagnose(context: Context): Diag {
+        val root = StorageLocator.getRoot(context)
+        var jsonTotal = 0
+        var notes = 0
+        var diaries = 0
+        var trashed = 0
+        var entities = 0
+        val failed = mutableListOf<String>()
+        var readable = false
+
+        fun walk(dir: File?, depth: Int) {
+            if (dir == null || !dir.isDirectory || depth > 6) return
+            val files = dir.listFiles() ?: return
+            if (depth == 0) readable = true
+            for (f in files) {
+                if (f.isDirectory) {
+                    if (f.name.startsWith(".")) {
+                        // 隐藏目录只计入 jsonTotal（对照用），不参与分类
+                        jsonTotal += countHiddenJson(f, 0)
+                        continue
+                    }
+                    walk(f, depth + 1)
+                } else if (f.name.endsWith(".json", true) && !f.name.contains(".sync-conflict")) {
+                    jsonTotal++
+                    val n = readNote(f)
+                    when {
+                        // readNote 返回 null 有两种可能：v2 实体（kind 字段，安全跳过）或真坏文件。
+                        // 二次确认 kind，避免把实体误报成"读不出来"
+                        n == null -> {
+                            if (readEntityKind(f)) entities++
+                            else if (failed.size < 8) failed.add(f.name)
+                        }
+                        n.deleted -> trashed++
+                        n.tags.contains("日记") -> diaries++
+                        else -> notes++
+                    }
+                }
+            }
+        }
+
+        walk(root, 0)
+        return Diag(
+            root = root.absolutePath,
+            dirReadable = readable,
+            jsonTotal = jsonTotal,
+            notes = notes,
+            diaries = diaries,
+            trashed = trashed,
+            entities = entities,
+            failed = failed
+        )
+    }
+
+    /** 数隐藏目录里的 json（只统计，不解析） */
+    private fun countHiddenJson(dir: File, depth: Int): Int {
+        if (!dir.isDirectory || depth > 6) return 0
+        var n = 0
+        for (f in dir.listFiles() ?: return 0) {
+            if (f.isDirectory) n += countHiddenJson(f, depth + 1)
+            else if (f.name.endsWith(".json", true) && !f.name.contains(".sync-conflict")) n++
+        }
+        return n
+    }
+
+    /** 该 json 是否为带 kind 字段的 v2 实体（联系人/课程/账目等），读失败不算 */
+    private fun readEntityKind(file: File): Boolean = try {
+        val raw = file.readText(Charsets.UTF_8)
+        noteJson.parseToJsonElement(raw).jsonObject.containsKey("kind")
+    } catch (_: Exception) {
+        false
     }
 
     fun getNote(context: Context, id: String): Note? {

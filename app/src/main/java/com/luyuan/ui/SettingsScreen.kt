@@ -48,7 +48,9 @@ import com.luyuan.data.NoteRepository
 import com.luyuan.platform.PermissionHelper
 import com.luyuan.platform.StorageLocator
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.runtime.rememberCoroutineScope
 
 /** 设置页 v2（路河拍板重排）：分区卡片化——📁目录/🔐权限/⌨️实体键/📚模型/🤖问路远/📱保活/ℹ️关于 */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -109,14 +111,14 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = 
                 val curCount = candidates.firstOrNull { it.path == currentPath }?.count
                 if (curCount != null) {
                     Text(
-                        "此目录扫到 $curCount 条笔记。" +
+                        "此目录扫到 $curCount 个笔记文件。" +
                                 if (curCount == 0) "如果是 0，多半是选错目录或 Syncthing 还没同步。" else "",
                         style = MaterialTheme.typography.labelSmall,
                         color = if (curCount == 0) MaterialTheme.colorScheme.error
                         else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Text("点选候选目录（按笔记数排序）：", style = MaterialTheme.typography.labelMedium)
+                Text("点选候选目录（按文件数排序）：", style = MaterialTheme.typography.labelMedium)
                 for (c in candidates) {
                     val selected = c.path == currentPath
                     Card(
@@ -151,7 +153,7 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = 
                                 modifier = Modifier.weight(1f, fill = false)
                             )
                             Text(
-                                "${c.count} 条",
+                                "${c.count} 个文件",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -167,6 +169,53 @@ fun SettingsScreen(vm: LuyuanViewModel, onBack: () -> Unit, onAsk: () -> Unit = 
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            // ---------- 🔍 同步诊断 ----------
+            SectionCard("🔍 同步诊断") {
+                Text(
+                    "主页笔记数量不对？点下面的按钮体检当前目录，把结果告诉路远即可定位。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                var diag by remember { mutableStateOf<NoteRepository.Diag?>(null) }
+                var diagBusy by remember { mutableStateOf(false) }
+                val diagScope = rememberCoroutineScope()
+                Button(
+                    onClick = {
+                        diagBusy = true
+                        diagScope.launch(Dispatchers.IO) {
+                            val d = NoteRepository.diagnose(context)
+                            withContext(Dispatchers.Main) {
+                                diag = d
+                                diagBusy = false
+                            }
+                        }
+                    },
+                    enabled = !diagBusy
+                ) { Text(if (diagBusy) "体检中…" else "体检当前目录") }
+                diag?.let { d ->
+                    val ok = d.dirReadable
+                    Text(
+                        buildString {
+                            appendLine("目录：${d.root}")
+                            appendLine("目录可读：${if (ok) "✅" else "⚠️ 读不了（权限/路径不存在）"}")
+                            appendLine("笔记文件总数：${d.jsonTotal}（含隐藏备份）")
+                            appendLine("其中真笔记：${d.notes} 条（主页应显示这么多）")
+                            appendLine("日记：${d.diaries} 条（日记页显示，主页不显示）")
+                            appendLine("回收站：${d.trashed} 条")
+                            appendLine("联系人/课程/账目等实体：${d.entities} 个（不算笔记）")
+                            if (d.failed.isNotEmpty()) {
+                                appendLine("读不出来的坏文件 ${d.failed.size}+ 个：")
+                                appendLine(d.failed.joinToString("\n"))
+                            }
+                            appendLine("对照：若「真笔记」远小于电脑面板的笔记数，")
+                            appendLine("请核对手机 Syncthing App 里共享文件夹的路径是否就是这个目录。")
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             // ---------- 🔐 权限 ----------
